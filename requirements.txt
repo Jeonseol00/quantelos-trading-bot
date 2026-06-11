@@ -1,0 +1,30 @@
+# =============================================================================
+# Quantelos AI Trader — Python Dependencies
+# =============================================================================
+# Install: pip install -r requirements.txt
+# =============================================================================
+
+# ─── Core ─────────────────────────────────────────────────────────────────────
+pyzmq>=25.0                    # ZeroMQ IPC bindings
+pandas>=2.0                    # Data manipulation
+pandas-ta>=0.3.14b             # Technical analysis indicators
+requests>=2.31                 # HTTP client
+
+# ─── Database & Config ────────────────────────────────────────────────────────
+# sqlite3 is built-in to Python
+tomli>=2.0; python_version<"3.11"  # TOML parser for Python < 3.11
+
+# ─── AI & NLP ─────────────────────────────────────────────────────────────────
+vaderSentiment>=3.3.2          # Local sentiment fallback (VADER)
+
+# ─── Scraping ─────────────────────────────────────────────────────────────────
+beautifulsoup4>=4.12           # HTML parser
+# scrapling                   # Optional: JA3 fingerprint HTTP client
+# playwright                  # Optional: Stealth browser (L2)
+
+# ─── System Monitoring ────────────────────────────────────────────────────────
+psutil>=5.9                    # RAM/CPU monitoring
+
+# ─── Development & Testing ────────────────────────────────────────────────────
+pytest>=7.0
+pytest-cov>=4.0

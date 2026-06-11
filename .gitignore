@@ -1,0 +1,37 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# OS/IDE settings
+.vscode/
+.idea/
+.DS_Store
+*.swp
+
+# Quantelos Bot Temp & Logs
+logs/
+*.log
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# C++ Build & Binaries
+cpp_engine/build/
+cpp_engine/quantelos_executor
+cpp_engine/tdd_runner
+cpp_engine/src/*.o
+cpp_engine/tests/*.o
+
+# Secret Configuration Files (contains private API tokens, webhooks, and account IDs)
+config/settings.toml
