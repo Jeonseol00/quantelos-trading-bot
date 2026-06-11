@@ -256,7 +256,19 @@ class QuantelosOrchestrator:
                     realized_pl = float(details.get("realizedPL", 0.0))
                     close_price = float(details.get("averageClosePrice", 0.0))
                     entry_price = float(pos["entry_price"])
-                    pips = abs(close_price - entry_price) / 0.0001 if close_price else 0
+                    
+                    # Convert to US Cents (multiply raw dollar profit/loss by 100)
+                    realized_pl_cents = realized_pl * 100.0
+                    
+                    # Determine pip size based on instrument (Gold = 0.1, JPY = 0.01, standard = 0.0001)
+                    pair = pos.get("pair", "") or self.oanda.instrument
+                    pip_size = 0.1 if "XAU" in pair else (0.01 if "JPY" in pair else 0.0001)
+                    
+                    raw_diff = close_price - entry_price
+                    if pos.get("direction") == "SELL":
+                        raw_diff = -raw_diff
+                        
+                    pips = raw_diff / pip_size if close_price else 0.0
 
                     with self.db._connect() as conn:
                         conn.execute(
@@ -267,7 +279,7 @@ class QuantelosOrchestrator:
                             """INSERT INTO trade_logs_evaluation
                                (trade_id, usc_profit_loss, pips_gained, strategy_tag)
                                VALUES (?, ?, ?, 'QUANTITATIVE_SNIPER')""",
-                            (trade_id, realized_pl, pips)
+                            (trade_id, realized_pl_cents, pips)
                         )
 
                     result_emoji = "🟢 WIN" if realized_pl > 0 else "🔴 LOSS"
