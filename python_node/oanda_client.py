@@ -121,15 +121,69 @@ class OANDAClient:
             logger.error("Failed to fetch open trades: %s", e)
             return []
 
+    def _find_closed_trade_in_transactions(self, trade_id: str) -> dict:
+        """
+        Scan recent transactions to find the close details for a trade.
+        OANDA's /trades/{trade_id} endpoint returns 404 once a trade is closed.
+        """
+        try:
+            # 1. Get the last transaction ID
+            url = f"{self.api_url}/v3/accounts/{self.account_id}/transactions"
+            r = requests.get(url, headers=self.headers, timeout=10, verify=False)
+            r.raise_for_status()
+            data = r.json()
+            last_id_str = data.get("lastTransactionID")
+            if not last_id_str:
+                return {}
+            
+            last_id = int(last_id_str)
+            from_id = max(1, last_id - 99)
+            
+            # 2. Fetch transaction details in that range
+            range_url = f"{self.api_url}/v3/accounts/{self.account_id}/transactions/idrange"
+            params = {
+                "from": str(from_id),
+                "to": str(last_id)
+            }
+            r_range = requests.get(range_url, headers=self.headers, params=params, timeout=10, verify=False)
+            r_range.raise_for_status()
+            range_data = r_range.json()
+            
+            # 3. Look for the closing transaction in reverse order (most recent first)
+            transactions = range_data.get("transactions", [])
+            for tx in reversed(transactions):
+                tx_type = tx.get("type")
+                if tx_type == "ORDER_FILL":
+                    # Check if this order fill closed our trade
+                    closed_list = tx.get("tradesClosed", [])
+                    for closed in closed_list:
+                        if str(closed.get("tradeID")) == str(trade_id):
+                            logger.info("✓ Found closed trade %s details in transaction %s.", trade_id, tx.get("id"))
+                            return {
+                                "realizedPL": closed.get("realizedPL", "0.0"),
+                                "averageClosePrice": closed.get("price", "0.0")
+                            }
+        except Exception as e:
+            logger.error("Failed to find closed trade %s in transactions: %s", trade_id, e)
+            
+        return {}
+
     def get_trade_details(self, trade_id: str) -> dict:
         """Fetch details of a specific trade (open or closed)."""
         url = f"{self.api_url}/v3/accounts/{self.account_id}/trades/{trade_id}"
         try:
             r = requests.get(url, headers=self.headers, timeout=10, verify=False)
+            if r.status_code == 404:
+                # Fallback to scanning transaction history
+                logger.info("Trade %s returned 404. Attempting transaction fallback scanning...", trade_id)
+                return self._find_closed_trade_in_transactions(trade_id)
             r.raise_for_status()
             data = r.json()
             return data.get("trade", {})
         except Exception as e:
+            if isinstance(e, requests.exceptions.HTTPError) and e.response is not None and e.response.status_code == 404:
+                logger.info("Trade %s HTTP Error 404. Attempting transaction fallback scanning...", trade_id)
+                return self._find_closed_trade_in_transactions(trade_id)
             logger.error("Failed to fetch trade %s details: %s", trade_id, e)
             return {}
 
