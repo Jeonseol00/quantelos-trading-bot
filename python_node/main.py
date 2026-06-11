@@ -412,11 +412,11 @@ class QuantelosOrchestrator:
                         continue
 
                     # Run Multi-Timeframe Scalper analysis
-                    logger.info("📊 [TECHNICAL ANALYSIS] Running calculations: M5 Keltner Channel, M5 RSI, M15 Bollinger Bands, H1 EMA(200)...")
+                    logger.info("📊 [TECHNICAL ANALYSIS] Running calculations: M5 Keltner Channel, M5 RSI, M15 Bollinger Bands, H1 EMA(50)...")
                     scalp_sig = self.ta.analyze_scalping(df, self.df_m15_cache, self.df_h1_cache)
                     direction = scalp_sig.direction
 
-                    logger.info("📈 [INDICATORS] H1 Trend: %s (EMA200: %.2f) | M15 BB Mid: %.2f | M5 RSI: %.1f | Price: %.2f",
+                    logger.info("📈 [INDICATORS] H1 Trend: %s (EMA50: %.2f) | M15 BB Mid: %.2f | M5 RSI: %.1f | Price: %.2f",
                                 scalp_sig.h1_trend, scalp_sig.h1_ema, scalp_sig.m15_bb_mid, scalp_sig.m5_rsi, current_price)
 
                     # Log fundamental check status

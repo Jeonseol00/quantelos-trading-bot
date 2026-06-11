@@ -197,7 +197,7 @@ class TechnicalAnalyzer:
         df_m15: Intermediate structure dataframe (M15)
         df_h1: Macro trend filter dataframe (H1)
         """
-        if len(df_m5) < 30 or len(df_m15) < 30 or len(df_h1) < 200:
+        if len(df_m5) < 30 or len(df_m15) < 30 or len(df_h1) < 60:
             logger.warning("Insufficient multi-timeframe historical data to run scalper.")
             return ScalpingSignal(
                 is_scalp_trigger=False, direction=None,
@@ -208,7 +208,7 @@ class TechnicalAnalyzer:
             )
 
         # 1. Macro H1 EMA Trend Filter
-        h1_ema_series = ta.ema(df_h1["close"], length=200)
+        h1_ema_series = ta.ema(df_h1["close"], length=50)
         h1_ema = h1_ema_series.iloc[-1]
         current_price = df_m5.iloc[-1]["close"]
         h1_trend = "BULLISH" if current_price > h1_ema else "BEARISH"
