@@ -135,6 +135,51 @@ class QuantelosOrchestrator:
         current_time = now.strftime("%H:%M")
         return block_start <= current_time <= block_end
 
+    def _is_news_blocked(self) -> bool:
+        """
+        Check if there is an active high-impact news event window.
+        Blocks trading 5 minutes before and 10 minutes after high-impact USD/EUR news.
+        """
+        pre_min = self.cfg["strategy"].get("news_block_pre_min", 5)
+        post_min = self.cfg["strategy"].get("news_block_post_min", 10)
+        
+        try:
+            with self.db._connect() as conn:
+                rows = conn.execute(
+                    "SELECT scheduled_at, currency, event_name FROM news_events "
+                    "WHERE impact_level = 'HIGH' "
+                    "AND datetime(scheduled_at) >= datetime('now', '-2 hours') "
+                    "AND datetime(scheduled_at) <= datetime('now', '+2 hours')"
+                ).fetchall()
+                
+                now_utc = datetime.now(timezone.utc)
+                for sched_str, currency, event_name in rows:
+                    if currency not in ("USD", "EUR"):
+                        continue
+                    
+                    try:
+                        sched_dt = datetime.strptime(sched_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+                    except Exception:
+                        try:
+                            clean_str = sched_str
+                            if " " in clean_str and "T" not in clean_str:
+                                parts = clean_str.split("+")
+                                if len(parts) > 1:
+                                    clean_str = parts[0].strip().replace(" ", "T") + "+" + parts[1]
+                            sched_dt = datetime.fromisoformat(clean_str.replace("Z", "+00:00"))
+                        except Exception:
+                            continue
+                    
+                    diff_sec = (now_utc - sched_dt).total_seconds()
+                    if -pre_min * 60 <= diff_sec <= post_min * 60:
+                        logger.warning("🚫 NEWS BLOCK active for event: [%s] %s (scheduled: %s, now: %s). Blocking trade execution.", 
+                                       currency, event_name, sched_str, now_utc.strftime("%Y-%m-%d %H:%M:%S"))
+                        return True
+        except Exception as e:
+            logger.error("Failed to check news blocks: %s", e)
+            
+        return False
+
     def _get_market_session(self) -> str:
         """Determine current market session for mode selection."""
         now = datetime.now().strftime("%H:%M")
@@ -294,25 +339,29 @@ class QuantelosOrchestrator:
                 session = self._get_market_session()
                 is_halted = self.db.is_emergency_halt()
                 is_blocked = self._is_trading_blocked()
+                is_news_blocked = self._is_news_blocked()
                 is_asia = (session == "ASIA")
 
                 allow_asia = (self.active_mode == "MTF_SCALPER" and self.cfg["strategy"].get("allow_asia_scalping", False))
-                is_passive = is_halted or is_blocked or (is_asia and not allow_asia)
+                is_passive = is_halted or is_blocked or is_news_blocked or (is_asia and not allow_asia)
                 passive_reason = None
                 if is_halted:
                     passive_reason = "EMERGENCY HALT"
                 elif is_blocked:
                     passive_reason = "MIDNIGHT BLOCK"
+                elif is_news_blocked:
+                    passive_reason = "HIGH-IMPACT NEWS BLOCK"
                 elif is_asia and not allow_asia:
                     passive_reason = "ASIA SESSION"
 
                 if is_passive:
                     logger.debug("System operating in passive monitoring mode due to: %s", passive_reason)
 
-                # Enforce cooldown period (10 minutes) between trade signals
+                # Enforce cooldown period between trade signals
+                cooldown_sec = self.cfg["strategy"].get("cooldown_sec", 120 if self.active_mode == "MTF_SCALPER" else 600)
                 time_since_last = time.time() - self.last_trade_time
-                if time_since_last < 600:
-                    logger.debug("Cooldown active (%.1fs remaining). Skipping execution checks.", 600.0 - time_since_last)
+                if time_since_last < cooldown_sec:
+                    logger.debug("Cooldown active (%.1fs remaining). Skipping execution checks.", cooldown_sec - time_since_last)
                     self.shutdown_event.wait(15)
                     continue
 
@@ -527,8 +576,6 @@ class QuantelosOrchestrator:
                                 f"Signal {decision.get('decision')} at {current_price:.5f} confirmed but skipped ({passive_reason}).",
                                 "INFO"
                             )
-                            # Record execution/passive skip time to enforce 10-minute cooldown
-                            self.last_trade_time = time.time()
                             continue
 
                         # Confirmed by LLM debate! Construct target levels (min 1:2 Risk:Reward)

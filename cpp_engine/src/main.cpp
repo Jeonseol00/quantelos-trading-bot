@@ -114,6 +114,18 @@ int get_open_positions_count(const std::string& db_path) {
     return count;
 }
 
+std::string format_price(double price, const std::string& pair) {
+    int precision = 5; // default for most FX pairs (e.g. EUR_USD)
+    if (pair.find("XAU") != std::string::npos) {
+        precision = 3;
+    } else if (pair.find("JPY") != std::string::npos) {
+        precision = 3;
+    }
+    std::ostringstream ss;
+    ss << std::fixed << std::setprecision(precision) << price;
+    return ss.str();
+}
+
 } // namespace quantelos
 
 int main() {
@@ -264,8 +276,8 @@ int main() {
                     {"timeInForce", "FOK"},
                     {"type", "MARKET"},
                     {"positionFill", "DEFAULT"},
-                    {"stopLossOnFill", {{"price", std::to_string(order.stop_loss)}}},
-                    {"takeProfitOnFill", {{"price", std::to_string(order.take_profit)}}}
+                    {"stopLossOnFill", {{"price", format_price(order.stop_loss, order.pair)}}},
+                    {"takeProfitOnFill", {{"price", format_price(order.take_profit, order.pair)}}}
                 }}
             };
 

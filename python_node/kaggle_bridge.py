@@ -301,7 +301,7 @@ class KaggleBridge:
             }
 
         # Check if the catalyst is a technical label
-        is_technical = "Mean Reversion" in news_text or "Technical" in news_text or "Momentum" in news_text
+        is_technical = "Mean Reversion" in news_text or "Technical" in news_text or "Momentum" in news_text or "Scalp" in news_text or "Pullback" in news_text
         if is_technical:
             logger.info("Local fallback: validating technical direction '%s' directly", self._last_direction)
             sentiment = "BULLISH_USD" if self._last_direction == "SELL" else "BEARISH_USD"
