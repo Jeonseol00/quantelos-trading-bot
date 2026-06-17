@@ -214,7 +214,7 @@ class TechnicalAnalyzer:
 
         # 1. Macro H1 EMA Trend Filter (STRICT for Gold — Gold trends are powerful)
         h1_ema_series = ta.ema(df_h1["close"], length=200)
-        h1_ema = h1_ema_series.iloc[-1]
+        h1_ema = h1_ema_series.iloc[-2]
         current_price = df_m5.iloc[-1]["close"]
         h1_trend = "BULLISH" if current_price > h1_ema else "BEARISH"
 
@@ -224,9 +224,9 @@ class TechnicalAnalyzer:
         bbm_col = [c for c in bb_m15.columns if c.startswith("BBM_")][0]
         bbu_col = [c for c in bb_m15.columns if c.startswith("BBU_")][0]
 
-        m15_bb_lower = bb_m15[bbl_col].iloc[-1]
-        m15_bb_mid = bb_m15[bbm_col].iloc[-1]
-        m15_bb_upper = bb_m15[bbu_col].iloc[-1]
+        m15_bb_lower = bb_m15[bbl_col].iloc[-2]
+        m15_bb_mid = bb_m15[bbm_col].iloc[-2]
+        m15_bb_upper = bb_m15[bbu_col].iloc[-2]
 
         # 3. Micro M5 Keltner Channel (EMA20 + ATR14 envelope)
         # NOTE: Replaces cumulative VWAP which suffered from anchor-drift.
@@ -234,41 +234,38 @@ class TechnicalAnalyzer:
         m5_ema20 = ta.ema(df_m5["close"], length=20)
         m5_atr_envelope = ta.atr(df_m5["high"], df_m5["low"], df_m5["close"], length=14)
 
-        m5_vwap = m5_ema20.iloc[-1]  # Center line (replaces VWAP)
-        m5_vwap_lower = (m5_ema20 - self.scalping_vwap_std * m5_atr_envelope).iloc[-1]
-        m5_vwap_upper = (m5_ema20 + self.scalping_vwap_std * m5_atr_envelope).iloc[-1]
+        m5_vwap = m5_ema20.iloc[-2]  # Center line (replaces VWAP)
+        m5_vwap_lower = (m5_ema20 - self.scalping_vwap_std * m5_atr_envelope).iloc[-2]
+        m5_vwap_upper = (m5_ema20 + self.scalping_vwap_std * m5_atr_envelope).iloc[-2]
 
         # Calculate M5 RSI
         rsi_m5_series = ta.rsi(df_m5["close"], length=self.rsi_period)
-        m5_rsi = rsi_m5_series.iloc[-1]
+        m5_rsi = rsi_m5_series.iloc[-2]
 
         # Calculate M5 ATR(14)
         atr_m5_series = ta.atr(df_m5["high"], df_m5["low"], df_m5["close"], length=14)
-        m5_atr = atr_m5_series.iloc[-1]
+        m5_atr = atr_m5_series.iloc[-2]
 
-        # 4. Trigger logic — Gold-tuned: STRICT trend filter + extreme RSI only
+        # 4. Trigger logic — Gold-tuned: Pullback-in-trend with OR condition
         is_scalp_trigger = False
         direction = None
 
-        # Gold v2.0: Trend filter is ALWAYS enforced — counter-trend scalps on Gold are deadly
-        trend_allows_buy = (h1_trend == "BULLISH" and current_price <= m15_bb_mid) if self.scalping_trend_filter else True
-        trend_allows_sell = (h1_trend == "BEARISH" and current_price >= m15_bb_mid) if self.scalping_trend_filter else True
-
-        if trend_allows_buy:
-            # Check for EXTREME oversold trigger on M5 (Gold: RSI < 30, not 40)
-            if current_price <= m5_vwap_lower and m5_rsi < self.scalping_rsi_low:
+        buy_pullback = current_price <= m5_vwap_lower or m5_rsi < self.scalping_rsi_low
+        if (not self.scalping_trend_filter) or (h1_trend == "BULLISH" and current_price <= m15_bb_mid):
+            if buy_pullback:
                 is_scalp_trigger = True
                 direction = "BUY"
                 logger.info("⚡ MTF SCALPER BUY triggered — H1 Trend: %s | M5 RSI: %.2f (threshold: %d) | M5 KC Lower: %.5f | Price: %.5f",
                             h1_trend, m5_rsi, self.scalping_rsi_low, m5_vwap_lower, current_price)
 
-        if not is_scalp_trigger and trend_allows_sell:
-            # Check for EXTREME overbought trigger on M5 (Gold: RSI > 70, not 60)
-            if current_price >= m5_vwap_upper and m5_rsi > self.scalping_rsi_high:
-                is_scalp_trigger = True
-                direction = "SELL"
-                logger.info("⚡ MTF SCALPER SELL triggered — H1 Trend: %s | M5 RSI: %.2f (threshold: %d) | M5 KC Upper: %.5f | Price: %.5f",
-                            h1_trend, m5_rsi, self.scalping_rsi_high, m5_vwap_upper, current_price)
+        sell_pullback = current_price >= m5_vwap_upper or m5_rsi > self.scalping_rsi_high
+        if not is_scalp_trigger:
+            if (not self.scalping_trend_filter) or (h1_trend == "BEARISH" and current_price >= m15_bb_mid):
+                if sell_pullback:
+                    is_scalp_trigger = True
+                    direction = "SELL"
+                    logger.info("⚡ MTF SCALPER SELL triggered — H1 Trend: %s | M5 RSI: %.2f (threshold: %d) | M5 KC Upper: %.5f | Price: %.5f",
+                                h1_trend, m5_rsi, self.scalping_rsi_high, m5_vwap_upper, current_price)
 
         return ScalpingSignal(
             is_scalp_trigger=is_scalp_trigger,
