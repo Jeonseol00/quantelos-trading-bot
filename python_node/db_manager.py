@@ -77,6 +77,21 @@ class DatabaseManager:
         self.set_config("emergency_halt", "TRUE")
         logger.critical("EMERGENCY HALT TRIGGERED")
 
+    def clear_stale_rl_params(self):
+        """Gold v2.0: Clear any stale RL-adapted parameters from the database.
+        Since RL live parameter modification is now disabled, this ensures the
+        strategy always uses config/settings.toml as the source of truth."""
+        stale_keys = [
+            "strategy_scalping_rsi_low",
+            "strategy_scalping_rsi_high",
+            "strategy_scalping_vwap_std",
+        ]
+        with self._connect() as conn:
+            for key in stale_keys:
+                conn.execute("DELETE FROM system_state WHERE config_key = ?", (key,))
+                logger.info("🧹 Cleared stale RL param: %s", key)
+        logger.info("🧹 All stale RL parameters cleared. Strategy will use config values.")
+
     # ─── Heartbeat Operations ─────────────────────────────────────────────────
 
     def record_heartbeat(self, node_name: str, status: str, ram_mb: float = 0, cpu_pct: float = 0):
@@ -105,7 +120,7 @@ class DatabaseManager:
                           scheduled_at: str, source: str = "forex_factory"):
         with self._connect() as conn:
             conn.execute(
-                """INSERT INTO news_events
+                """INSERT OR IGNORE INTO news_events
                    (currency, event_name, impact_level, forecast, actual, previous, scheduled_at, source)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (currency, event_name, impact, forecast, actual, previous, scheduled_at, source),
@@ -155,3 +170,36 @@ class DatabaseManager:
             wins = d["wins"] or 0
             d["win_rate"] = (wins / total * 100) if total > 0 else 0.0
             return d
+
+    def get_recent_failures(self, limit: int = 3) -> list[dict]:
+        """Fetch historical trading and training failures to provide as negative reinforcement context."""
+        with self._connect() as conn:
+            try:
+                rows = conn.execute("""
+                    SELECT 
+                        pair, 
+                        pips_gained, 
+                        ai_lessons_learned,
+                        simulated_at as timestamp,
+                        'SIMULATION' as type
+                    FROM weekend_training_logs
+                    WHERE evaluation_result = 'INCORRECT' AND ai_lessons_learned IS NOT NULL AND ai_lessons_learned != ''
+                    
+                    UNION ALL
+                    
+                    SELECT 
+                        news_trigger as pair, 
+                        pips_gained, 
+                        ai_lessons_learned,
+                        evaluated_at as timestamp,
+                        'LIVE_TRADE' as type
+                    FROM trade_logs_evaluation
+                    WHERE usc_profit_loss < 0 AND ai_lessons_learned IS NOT NULL AND ai_lessons_learned != ''
+                    
+                    ORDER BY timestamp DESC
+                    LIMIT ?
+                """, (limit,)).fetchall()
+                return [dict(r) for r in rows]
+            except Exception as e:
+                logger.error("Failed to query recent failures: %s", e)
+                return []

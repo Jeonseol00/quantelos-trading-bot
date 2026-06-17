@@ -46,6 +46,18 @@ class DashboardRequestHandler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps(data).encode("utf-8"))
+        elif self.path == '/api/weekend_training_logs':
+            logs = self._get_weekend_training_logs()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(logs).encode("utf-8"))
+        elif self.path == '/api/ai_thinking':
+            thinking = self._get_ai_thinking_state()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(thinking).encode("utf-8"))
         else:
             self.send_response(404)
             self.end_headers()
@@ -192,6 +204,26 @@ class DashboardRequestHandler(http.server.BaseHTTPRequestHandler):
                     except Exception:
                         pass
 
+        # 6.5. Weekend training stats
+        weekend_stats = {"total_runs": 0, "wins": 0, "losses": 0, "win_rate": 0.0, "total_reward": 0.0, "avg_pips": 0.0}
+        try:
+            row = cursor.execute("""
+                SELECT 
+                    COUNT(*) as total_runs,
+                    SUM(CASE WHEN evaluation_result = 'CORRECT' THEN 1 ELSE 0 END) as wins,
+                    SUM(CASE WHEN evaluation_result = 'INCORRECT' THEN 1 ELSE 0 END) as losses,
+                    SUM(reward_penalty) as total_reward,
+                    AVG(pips_gained) as avg_pips
+                FROM weekend_training_logs
+            """).fetchone()
+            if row and row["total_runs"] > 0:
+                weekend_stats = dict(row)
+                weekend_stats["win_rate"] = (weekend_stats["wins"] / weekend_stats["total_runs"] * 100)
+                weekend_stats["total_reward"] = round(weekend_stats["total_reward"] or 0.0, 1)
+                weekend_stats["avg_pips"] = round(weekend_stats["avg_pips"] or 0.0, 1)
+        except Exception:
+            pass
+
         conn.close()
 
         # 7. Last 50 lines of log file
@@ -207,6 +239,7 @@ class DashboardRequestHandler(http.server.BaseHTTPRequestHandler):
         return {
             "emergency_halt": states.get("emergency_halt", "FALSE"),
             "gpu_url": states.get("kaggle_ngrok_url", ""),
+            "system_mode": states.get("system_mode", "DEMO"),
             "account_balance": states.get("account_balance", "0.00"),
             "account_equity": states.get("account_equity", "0.00"),
             "account_unrealized_pl": states.get("account_unrealized_pl", "0.00"),
@@ -218,8 +251,62 @@ class DashboardRequestHandler(http.server.BaseHTTPRequestHandler):
             "recent_trades": recent_trades,
             "news_events": news_events,
             "node_status": node_status,
-            "system_logs": system_logs
+            "system_logs": system_logs,
+            "weekend_stats": weekend_stats
         }
+
+    def _get_weekend_training_logs(self) -> list[dict]:
+        conn = sqlite3.connect(str(DB_PATH))
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        logs = []
+        try:
+            rows = cursor.execute("""
+                SELECT * FROM weekend_training_logs 
+                ORDER BY simulated_at DESC LIMIT 30
+            """).fetchall()
+            logs = [dict(r) for r in rows]
+        except Exception:
+            pass
+        finally:
+            conn.close()
+        return logs
+
+    def _get_ai_thinking_state(self) -> dict:
+        """Read the live AI thinking state from SQLite system_state table."""
+        conn = sqlite3.connect(str(DB_PATH))
+        conn.row_factory = sqlite3.Row
+        default = {"active": False, "phase": "idle", "model": "", "tokens_generated": 0,
+                   "thinking_text": "", "output_text": "", "current_agent": None,
+                   "agents_completed": [], "elapsed_seconds": 0, "error": None,
+                   "decision_json": None}
+        try:
+            row = conn.execute(
+                "SELECT config_value FROM system_state WHERE config_key = 'ai_thinking_state'"
+            ).fetchone()
+            if row:
+                state = json.loads(row["config_value"])
+                # Gold v2.0: If current state is connecting/idle, show last complete state
+                if state.get("phase") in ("connecting", "idle") and state.get("tokens_generated", 0) == 0:
+                    last_row = conn.execute(
+                        "SELECT config_value FROM system_state WHERE config_key = 'last_complete_thinking'"
+                    ).fetchone()
+                    if last_row:
+                        last_state = json.loads(last_row["config_value"])
+                        last_state["phase"] = "complete (previous)"
+                        last_state["_note"] = "Showing last complete analysis while new inference runs..."
+                        conn.close()
+                        return last_state
+                conn.close()
+                return state
+        except Exception:
+            pass
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+        return default
 
     def _update_halt_state(self, state: str):
         conn = sqlite3.connect(str(DB_PATH))

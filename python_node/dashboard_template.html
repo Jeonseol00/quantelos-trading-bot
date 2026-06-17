@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Quantelos | Gold Intelligence Suite</title>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
         :root {
             --bg-base: #03060f;
@@ -640,6 +641,30 @@
                 </div>
             </div>
 
+            <!-- Cognitive Audit & Autoresearch (NEW) -->
+            <div class="card" style="border-color: rgba(16, 185, 129, 0.3); background: linear-gradient(180deg, rgba(16, 185, 129, 0.05) 0%, var(--bg-surface) 100%);">
+                <div class="status-header" style="border-bottom-color: rgba(16, 185, 129, 0.1);">
+                    <span style="color: var(--success); text-shadow: 0 0 10px rgba(16, 185, 129, 0.4);">Cognitive Audit & Evolution</span>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 0.85rem;">
+                    <!-- Pre-Flight Status -->
+                    <div style="padding: 0.85rem; background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(16, 185, 129, 0.1); border-radius: 0.75rem;">
+                        <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700; margin-bottom: 0.4rem;">Memory Pre-Flight Check</div>
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <span style="font-size: 0.85rem; font-weight: 600;">Current Setup Safety</span>
+                            <span id="audit-safety-badge" class="status-badge alive" style="font-size: 0.7rem; padding: 0.2rem 0.5rem;">CLEARED (0% Failure)</span>
+                        </div>
+                    </div>
+                    <!-- Autoresearch Mutations -->
+                    <div style="padding: 0.85rem; background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(245, 158, 11, 0.1); border-radius: 0.75rem;">
+                        <div style="font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700; margin-bottom: 0.4rem;">Recent Git-Mutations</div>
+                        <div id="mutation-log-container" style="font-family: 'JetBrains Mono'; font-size: 0.75rem; color: var(--text-secondary); max-height: 80px; overflow-y: auto;">
+                            <div style="padding: 0.2rem 0; border-bottom: 1px dashed rgba(255,255,255,0.05); color: var(--accent-primary);">> No recent mutations</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- High Impact News Events -->
             <div class="card">
                 <div class="status-header">
@@ -761,74 +786,104 @@
 
             <!-- MiroFish Multi-Agent Market Swarm Chamber -->
             <style>
-                .swarm-wrapper {
+                .swarm-card-container {
                     display: flex;
                     flex-direction: column;
-                    gap: 1.15rem;
-                    padding: 0.5rem 0;
+                    gap: 1rem;
                 }
-                .swarm-trigger-banner {
-                    background: rgba(245, 158, 11, 0.06);
-                    border: 1px solid rgba(245, 158, 11, 0.25);
-                    border-radius: 0.75rem;
-                    padding: 1rem 1.25rem;
-                    font-size: 0.9rem;
+                .tab-controls {
                     display: flex;
-                    justify-content: space-between;
-                    align-items: center;
+                    gap: 0.75rem;
+                    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+                    padding-bottom: 0.75rem;
+                    margin-bottom: 0.5rem;
                 }
-                .swarm-trigger-title {
-                    font-weight: 800;
+                .tab-btn {
+                    background: transparent;
+                    border: 1px solid rgba(255, 255, 255, 0.08);
+                    color: var(--text-muted);
+                    padding: 0.5rem 1.15rem;
+                    border-radius: 0.5rem;
+                    cursor: pointer;
+                    font-size: 0.85rem;
+                    font-weight: 600;
+                    transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+                    font-family: 'Outfit', sans-serif;
+                }
+                .tab-btn:hover {
                     color: white;
+                    border-color: rgba(245, 158, 11, 0.3);
+                    background: rgba(245, 158, 11, 0.02);
                 }
-                .swarm-trigger-catalyst {
-                    font-size: 0.8rem;
-                    color: var(--text-secondary);
-                    font-family: 'JetBrains Mono';
-                    font-weight: 500;
+                .tab-btn.active {
+                    color: white;
+                    background: rgba(245, 158, 11, 0.1);
+                    border-color: var(--accent-primary);
+                    box-shadow: 0 0 10px rgba(245, 158, 11, 0.15);
                 }
-                .swarm-agents-grid {
-                    display: grid;
-                    grid-template-columns: repeat(3, 1fr);
-                    gap: 1.15rem;
+                .tab-content {
+                    display: none;
                 }
-                .swarm-agent-card {
-                    background: rgba(18, 25, 48, 0.35);
+                .tab-content.active {
+                    display: block;
+                }
+                
+                /* D3 Swarm Graph Layout */
+                .graph-layout {
+                    display: flex;
+                    gap: 1.25rem;
+                    min-height: 380px;
+                }
+                .graph-svg-container {
+                    flex: 1.7;
+                    background: rgba(3, 6, 15, 0.4);
+                    border: 1px solid rgba(255, 255, 255, 0.03);
+                    border-radius: 0.75rem;
+                    position: relative;
+                    overflow: hidden;
+                }
+                .graph-svg-container svg {
+                    width: 100%;
+                    height: 100%;
+                    display: block;
+                }
+                .graph-sidebar {
+                    flex: 1;
+                    background: rgba(18, 25, 48, 0.3);
                     border: 1px solid rgba(255, 255, 255, 0.04);
-                    border-radius: 1rem;
-                    padding: 1.25rem;
+                    border-radius: 0.75rem;
+                    padding: 1.15rem;
                     display: flex;
                     flex-direction: column;
                     gap: 0.75rem;
-                    position: relative;
-                    transition: border-color 0.2s ease;
+                    overflow-y: auto;
+                    max-height: 380px;
                 }
-                .swarm-agent-card:hover {
-                    border-color: rgba(245, 158, 11, 0.15);
-                }
-                .swarm-agent-header {
+                .sidebar-header {
                     display: flex;
                     align-items: center;
-                    gap: 0.65rem;
+                    gap: 0.5rem;
                     border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-                    padding-bottom: 0.65rem;
+                    padding-bottom: 0.5rem;
+                    margin-bottom: 0.25rem;
                 }
-                .swarm-agent-avatar {
-                    width: 2rem;
-                    height: 2rem;
+                .sidebar-avatar {
+                    width: 1.75rem;
+                    height: 1.75rem;
                     border-radius: 50%;
                     display: flex;
                     align-items: center;
                     justify-content: center;
-                    font-size: 0.85rem;
+                    font-size: 0.75rem;
                     font-weight: 800;
                     color: #03060f;
                 }
-                .swarm-agent-name {
-                    font-size: 0.9rem;
+                .sidebar-title {
                     font-weight: 700;
+                    font-size: 0.95rem;
+                    color: white;
                 }
-                .swarm-agent-role {
+                .sidebar-role {
                     font-size: 0.65rem;
                     color: var(--text-muted);
                     text-transform: uppercase;
@@ -836,95 +891,446 @@
                     font-weight: 700;
                     letter-spacing: 0.05em;
                 }
-                .swarm-agent-message {
+                .sidebar-content {
                     font-size: 0.85rem;
                     color: var(--text-secondary);
                     line-height: 1.5;
-                    min-height: 4rem;
+                    white-space: pre-wrap;
                 }
-                
-                /* Agent Specific Styling */
-                .agent-retail .swarm-agent-avatar {
-                    background: linear-gradient(135deg, #f59e0b, #eab308);
-                    box-shadow: 0 0 10px rgba(245, 158, 11, 0.3);
-                }
-                .agent-retail .swarm-agent-name { color: #f59e0b; }
-                
-                .agent-whale .swarm-agent-avatar {
-                    background: linear-gradient(135deg, #06b6d4, #0891b2);
-                    box-shadow: 0 0 10px rgba(6, 182, 212, 0.3);
-                }
-                .agent-whale .swarm-agent-name { color: #06b6d4; }
-                
-                .agent-policymaker .swarm-agent-avatar {
-                    background: linear-gradient(135deg, #a855f7, #9333ea);
-                    box-shadow: 0 0 10px rgba(168, 85, 247, 0.3);
-                }
-                .agent-policymaker .swarm-agent-name { color: #a855f7; }
 
-                /* Consensus Section */
-                .swarm-consensus-card {
-                    background: rgba(16, 185, 129, 0.04);
-                    border: 1px dashed rgba(16, 185, 129, 0.3);
-                    border-radius: 1rem;
-                    padding: 1.25rem;
-                    display: grid;
-                    grid-template-columns: 3.5fr 1fr 1fr;
-                    gap: 1.25rem;
-                    align-items: center;
-                }
-                .swarm-consensus-evaluation {
+                /* Weekend Trainer Layout */
+                .trainer-layout {
                     display: flex;
                     flex-direction: column;
-                    gap: 0.35rem;
+                    gap: 1.25rem;
                 }
-                .swarm-consensus-title {
-                    font-size: 0.8rem;
+                .trainer-kpi-grid {
+                    display: grid;
+                    grid-template-columns: repeat(4, 1fr);
+                    gap: 1rem;
+                }
+                .trainer-kpi-box {
+                    background: rgba(20, 25, 45, 0.3);
+                    border: 1px solid rgba(255, 255, 255, 0.03);
+                    border-radius: 0.75rem;
+                    padding: 0.85rem 1.15rem;
+                    display: flex;
+                    flex-direction: column;
+                    gap: 0.25rem;
+                }
+                .trainer-kpi-label {
+                    font-size: 0.725rem;
                     text-transform: uppercase;
-                    color: var(--success);
+                    color: var(--text-muted);
                     font-weight: 700;
-                    letter-spacing: 0.06em;
+                    letter-spacing: 0.05em;
                 }
-                .swarm-consensus-text {
-                    font-size: 0.85rem;
+                .trainer-kpi-val {
+                    font-size: 1.35rem;
+                    font-weight: 800;
+                    color: white;
+                }
+                .trainer-logs-list {
+                    background: rgba(3, 6, 15, 0.25);
+                    border: 1px solid rgba(255, 255, 255, 0.04);
+                    border-radius: 0.75rem;
+                    max-height: 250px;
+                    overflow-y: auto;
+                    font-size: 0.825rem;
+                }
+                .trainer-log-row {
+                    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+                    transition: background 0.2s ease;
+                }
+                .trainer-log-row:hover {
+                    background: rgba(255, 255, 255, 0.01);
+                }
+                .trainer-log-summary {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    padding: 0.75rem 1.15rem;
+                    cursor: pointer;
+                }
+                .trainer-log-details {
+                    display: none;
+                    background: rgba(0, 0, 0, 0.2);
+                    padding: 1rem 1.15rem;
+                    border-top: 1px solid rgba(255, 255, 255, 0.02);
                     color: var(--text-secondary);
                     line-height: 1.5;
+                    font-size: 0.8rem;
                 }
-                .swarm-consensus-metric {
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                    justify-content: center;
-                    border-left: 1px solid rgba(255, 255, 255, 0.05);
-                    padding-left: 1.25rem;
-                    text-align: center;
-                }
-                .swarm-metric-label {
-                    font-size: 0.65rem;
-                    color: var(--text-muted);
-                    text-transform: uppercase;
-                    margin-bottom: 0.25rem;
-                    font-weight: 700;
-                }
-                .swarm-metric-value {
-                    font-size: 1.2rem;
-                    font-weight: 800;
-                    font-family: 'JetBrains Mono', monospace;
+                .trainer-log-details.open {
+                    display: block;
                 }
             </style>
 
-            <!-- MiroFish Multi-Agent Market Swarm Chamber -->
             <div class="card" id="mirofish-swarm-card">
                 <div class="status-header">
                     <span style="display: flex; align-items: center; gap: 0.6rem;">
-                        MiroFish Multi-Agent Market Swarm Chamber
-                        <span class="pulse-bulb" style="background-color: var(--accent-primary); box-shadow: 0 0 8px var(--accent-primary); width: 7px; height: 7px; animation-duration: 3s;"></span>
+                        MiroFish Swarm Chamber & Weekend Trainer
+                        <span class="pulse-bulb" id="swarm-chamber-bulb" style="background-color: var(--accent-primary); box-shadow: 0 0 8px var(--accent-primary); width: 7px; height: 7px; animation-duration: 3s;"></span>
                     </span>
                     <span style="font-size: 0.75rem; color: var(--text-muted); font-family: 'JetBrains Mono';" id="mirofish-swarm-timestamp">Offline</span>
                 </div>
-                <div id="mirofish-swarm-content">
-                    <div class="empty-state">
-                        Waiting for next market breakout trigger to run pre-trade simulation...
+                
+                <div class="swarm-card-container">
+                    <div class="tab-controls">
+                        <button class="tab-btn active" id="btn-consensus-graph" onclick="switchSwarmTab('consensus-graph')">Consensus Graph</button>
+                        <button class="tab-btn" id="btn-weekend-trainer" onclick="switchSwarmTab('weekend-trainer')">Weekend Self-Training</button>
+                        <button class="tab-btn" id="btn-live-thinking" onclick="switchSwarmTab('live-thinking')">Live AI Thinking</button>
+                    </div>
+
+                    <!-- Tab 1: Consensus Graph -->
+                    <div id="tab-consensus-graph" class="tab-content active">
+                        <div class="graph-layout">
+                            <div class="graph-svg-container" id="d3-swarm-graph">
+                                <div class="empty-state" id="graph-empty-state">
+                                    Waiting for next market breakout trigger to run pre-trade simulation...
+                                </div>
+                            </div>
+                            <div class="graph-sidebar" id="swarm-graph-sidebar">
+                                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-muted); text-align: center;" id="sidebar-default-msg">
+                                    <span style="font-size: 1.5rem; margin-bottom: 0.5rem;">🎯</span>
+                                    <span>Click nodes in the relationship graph to view real-time multi-agent reasoning.</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tab 2: Weekend Self-Training -->
+                    <div id="tab-weekend-trainer" class="tab-content">
+                        <div class="trainer-layout">
+                            <div class="trainer-kpi-grid">
+                                <div class="trainer-kpi-box">
+                                    <span class="trainer-kpi-label">Episodes</span>
+                                    <span class="trainer-kpi-val" id="trainer-total-runs">0</span>
+                                </div>
+                                <div class="trainer-kpi-box">
+                                    <span class="trainer-kpi-label">Win Rate</span>
+                                    <span class="trainer-kpi-val" id="trainer-win-rate">0.0%</span>
+                                </div>
+                                <div class="trainer-kpi-box">
+                                    <span class="trainer-kpi-label">Total Reward</span>
+                                    <span class="trainer-kpi-val" id="trainer-reward">0.0</span>
+                                </div>
+                                <div class="trainer-kpi-box">
+                                    <span class="trainer-kpi-label">Avg Pips</span>
+                                    <span class="trainer-kpi-val" id="trainer-avg-pips">0.0</span>
+                                </div>
+                            </div>
+                            
+                            <div class="trainer-logs-list" id="trainer-logs-list">
+                                <div class="empty-state">No training episodes logged yet. Running simulations...</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tab 3: Live AI Thinking -->
+                    <div id="tab-live-thinking" class="tab-content">
+                        <style>
+                            .thinking-container {
+                                display: grid;
+                                grid-template-columns: 260px 1fr;
+                                gap: 1rem;
+                                min-height: 380px;
+                            }
+                            .thinking-neural-panel {
+                                display: flex;
+                                flex-direction: column;
+                                gap: 0.75rem;
+                            }
+                            .thinking-status-bar {
+                                display: flex;
+                                align-items: center;
+                                gap: 0.6rem;
+                                padding: 0.65rem 0.85rem;
+                                background: rgba(20, 25, 45, 0.4);
+                                border: 1px solid rgba(255,255,255,0.04);
+                                border-radius: 0.6rem;
+                            }
+                            .thinking-status-indicator {
+                                width: 8px; height: 8px;
+                                border-radius: 50%;
+                                background: var(--text-muted);
+                                flex-shrink: 0;
+                            }
+                            .thinking-status-indicator.active {
+                                background: var(--success);
+                                box-shadow: 0 0 8px var(--success-glow);
+                                animation: pulse-glow 1.2s ease-in-out infinite;
+                            }
+                            .thinking-status-indicator.complete {
+                                background: var(--success);
+                                box-shadow: 0 0 6px var(--success-glow);
+                            }
+                            .thinking-status-indicator.error {
+                                background: var(--danger);
+                                box-shadow: 0 0 8px var(--danger-glow);
+                            }
+                            @keyframes pulse-glow {
+                                0%, 100% { opacity: 1; transform: scale(1); }
+                                50% { opacity: 0.5; transform: scale(1.3); }
+                            }
+                            .thinking-status-text {
+                                font-size: 0.78rem;
+                                color: var(--text-secondary);
+                                font-family: 'JetBrains Mono';
+                            }
+                            .thinking-status-text .model-name {
+                                color: var(--accent-primary);
+                                font-weight: 600;
+                            }
+                            .thinking-elapsed {
+                                margin-left: auto;
+                                font-size: 0.7rem;
+                                color: var(--text-muted);
+                                font-family: 'JetBrains Mono';
+                                font-weight: 600;
+                            }
+                            /* Agent Phase Pipeline */
+                            .agent-pipeline {
+                                display: flex;
+                                flex-direction: column;
+                                gap: 0;
+                            }
+                            .agent-node {
+                                display: flex;
+                                align-items: center;
+                                gap: 0.6rem;
+                                padding: 0.6rem 0.75rem;
+                                border-left: 2px solid rgba(255,255,255,0.06);
+                                position: relative;
+                                transition: all 0.3s ease;
+                            }
+                            .agent-node::before {
+                                content: '';
+                                position: absolute;
+                                left: -5px;
+                                width: 8px; height: 8px;
+                                border-radius: 50%;
+                                background: rgba(255,255,255,0.08);
+                                border: 1.5px solid rgba(255,255,255,0.1);
+                                transition: all 0.3s ease;
+                            }
+                            .agent-node.completed {
+                                border-left-color: var(--success);
+                            }
+                            .agent-node.completed::before {
+                                background: var(--success);
+                                border-color: var(--success);
+                                box-shadow: 0 0 6px var(--success-glow);
+                            }
+                            .agent-node.active-agent {
+                                border-left-color: var(--accent-primary);
+                                background: rgba(245, 158, 11, 0.04);
+                                border-radius: 0 0.4rem 0.4rem 0;
+                            }
+                            .agent-node.active-agent::before {
+                                background: var(--accent-primary);
+                                border-color: var(--accent-primary);
+                                box-shadow: 0 0 8px var(--accent-primary-glow);
+                                animation: pulse-glow 1s ease-in-out infinite;
+                            }
+                            .agent-node-icon {
+                                width: 24px; height: 24px;
+                                border-radius: 50%;
+                                display: flex;
+                                align-items: center;
+                                justify-content: center;
+                                font-size: 0.65rem;
+                                font-weight: 800;
+                                color: #03060f;
+                                flex-shrink: 0;
+                            }
+                            .agent-node-info {
+                                display: flex;
+                                flex-direction: column;
+                            }
+                            .agent-node-name {
+                                font-size: 0.78rem;
+                                font-weight: 600;
+                                color: var(--text-primary);
+                            }
+                            .agent-node-role {
+                                font-size: 0.62rem;
+                                color: var(--text-muted);
+                                text-transform: uppercase;
+                                letter-spacing: 0.04em;
+                            }
+                            .agent-node-check {
+                                margin-left: auto;
+                                font-size: 0.7rem;
+                                opacity: 0;
+                                transition: opacity 0.3s;
+                            }
+                            .agent-node.completed .agent-node-check {
+                                opacity: 1;
+                                color: var(--success);
+                            }
+                            /* Token Counter */
+                            .thinking-token-counter {
+                                display: flex;
+                                align-items: center;
+                                gap: 0.5rem;
+                                padding: 0.5rem 0.75rem;
+                                background: rgba(20, 25, 45, 0.3);
+                                border: 1px solid rgba(255,255,255,0.03);
+                                border-radius: 0.5rem;
+                                font-size: 0.72rem;
+                                color: var(--text-muted);
+                                font-family: 'JetBrains Mono';
+                            }
+                            .token-count-val {
+                                color: var(--accent-primary);
+                                font-weight: 700;
+                                font-size: 1rem;
+                            }
+                            /* Stream Panel */
+                            .thinking-stream-panel {
+                                display: flex;
+                                flex-direction: column;
+                                gap: 0.5rem;
+                                height: 100%;
+                            }
+                            .stream-label {
+                                font-size: 0.68rem;
+                                text-transform: uppercase;
+                                letter-spacing: 0.06em;
+                                font-weight: 700;
+                                color: var(--text-muted);
+                                display: flex;
+                                align-items: center;
+                                gap: 0.4rem;
+                            }
+                            .stream-label .dot {
+                                width: 5px; height: 5px;
+                                border-radius: 50%;
+                                display: inline-block;
+                            }
+                            .stream-box {
+                                background: rgba(3, 6, 15, 0.5);
+                                border: 1px solid rgba(255,255,255,0.04);
+                                border-radius: 0.65rem;
+                                padding: 0.85rem 1rem;
+                                font-family: 'JetBrains Mono';
+                                font-size: 0.72rem;
+                                line-height: 1.65;
+                                color: var(--text-secondary);
+                                overflow-y: auto;
+                                white-space: pre-wrap;
+                                word-break: break-word;
+                                flex: 1;
+                                min-height: 0;
+                                position: relative;
+                            }
+                            .stream-box.thinking-stream {
+                                max-height: 140px;
+                                border-color: rgba(168, 85, 247, 0.12);
+                            }
+                            .stream-box.output-stream {
+                                max-height: 180px;
+                                border-color: rgba(16, 185, 129, 0.12);
+                            }
+                            .conclusion-panel {
+                                margin-top: 16px;
+                                padding: 16px 20px;
+                                border-radius: 10px;
+                                border: 1px solid rgba(255,255,255,0.06);
+                                backdrop-filter: blur(8px);
+                            }
+                            .conclusion-header {
+                                display: flex;
+                                align-items: center;
+                                gap: 12px;
+                                margin-bottom: 12px;
+                            }
+                            .conclusion-icon {
+                                display: inline-flex;
+                                align-items: center;
+                                justify-content: center;
+                                width: 32px;
+                                height: 32px;
+                                border-radius: 50%;
+                                font-size: 16px;
+                                font-weight: bold;
+                                color: #fff;
+                                flex-shrink: 0;
+                            }
+                            .conclusion-title {
+                                font-size: 18px;
+                                font-weight: 700;
+                                letter-spacing: 0.5px;
+                                text-transform: uppercase;
+                            }
+                            .conclusion-conf {
+                                margin-left: auto;
+                                font-size: 13px;
+                                color: var(--text-muted);
+                                background: rgba(255,255,255,0.05);
+                                padding: 4px 10px;
+                                border-radius: 12px;
+                            }
+                            .conclusion-detail {
+                                display: flex;
+                                flex-direction: column;
+                                gap: 6px;
+                                font-size: 13px;
+                                color: var(--text-secondary);
+                                line-height: 1.5;
+                            }
+                            .conclusion-row {
+                                display: flex;
+                                gap: 8px;
+                            }
+                            .conclusion-label {
+                                font-weight: 600;
+                                color: var(--text-primary);
+                                min-width: 70px;
+                                flex-shrink: 0;
+                            }
+                            .stream-cursor {
+                                display: inline-block;
+                                width: 2px;
+                                height: 1em;
+                                background: var(--accent-primary);
+                                animation: blink-cursor 0.8s steps(1) infinite;
+                                vertical-align: text-bottom;
+                                margin-left: 1px;
+                            }
+                            @keyframes blink-cursor {
+                                0%, 50% { opacity: 1; }
+                                51%, 100% { opacity: 0; }
+                            }
+                            .thinking-idle-state {
+                                display: flex;
+                                flex-direction: column;
+                                align-items: center;
+                                justify-content: center;
+                                height: 100%;
+                                gap: 1rem;
+                                color: var(--text-muted);
+                                text-align: center;
+                                padding: 2rem;
+                            }
+                            .thinking-idle-state .idle-icon {
+                                font-size: 2rem;
+                                opacity: 0.5;
+                            }
+                            .thinking-idle-state .idle-text {
+                                font-size: 0.85rem;
+                                line-height: 1.5;
+                            }
+                        </style>
+
+                        <div id="thinking-content-wrapper">
+                            <!-- Populated by JS -->
+                            <div class="thinking-idle-state" id="thinking-idle-msg">
+                                <div class="idle-icon">🧠</div>
+                                <div class="idle-text">Neural inference engine idle.<br>Waiting for next AI Swarm analysis trigger...</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -994,6 +1400,424 @@
 
     <script>
         let isEmergencyHalt = false;
+        let lastSwarmDebateTime = null;
+        let activeSwarmTab = 'consensus-graph';
+        let openReflectionId = null;
+        let simulation = null;
+        let thinkingPollInterval = null;
+
+        function switchSwarmTab(tabName) {
+            activeSwarmTab = tabName;
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            
+            if (tabName === 'consensus-graph') {
+                document.getElementById('btn-consensus-graph').classList.add('active');
+                document.getElementById('tab-consensus-graph').classList.add('active');
+                lastSwarmDebateTime = null; // force redraw
+                stopThinkingPoll();
+            } else if (tabName === 'weekend-trainer') {
+                document.getElementById('btn-weekend-trainer').classList.add('active');
+                document.getElementById('tab-weekend-trainer').classList.add('active');
+                fetchAndRenderWeekendLogs();
+                stopThinkingPoll();
+            } else if (tabName === 'live-thinking') {
+                document.getElementById('btn-live-thinking').classList.add('active');
+                document.getElementById('tab-live-thinking').classList.add('active');
+                startThinkingPoll();
+            }
+        }
+
+        // ─── Live AI Thinking Visualization ──────────────────────────────────
+        const AGENT_DEFS = [
+            { id: "retail", name: "Retail Swarm", role: "FOMO & Momentum", color: "#f59e0b", avatar: "R" },
+            { id: "whale", name: "Whale Maker", role: "Liquidity Hunter", color: "#06b6d4", avatar: "W" },
+            { id: "policy", name: "Policymaker", role: "Macro Strategist", color: "#a855f7", avatar: "P" },
+            { id: "risk_assessor", name: "Risk Assessor", role: "Consensus Synthesis", color: "#10b981", avatar: "S" },
+            { id: "self_correction", name: "Self-Correction", role: "Red Team / Devil's Advocate", color: "#f43f5e", avatar: "X" }
+        ];
+
+        function startThinkingPoll() {
+            fetchAndRenderThinking();
+            if (thinkingPollInterval) clearInterval(thinkingPollInterval);
+            thinkingPollInterval = setInterval(fetchAndRenderThinking, 800);
+        }
+
+        function stopThinkingPoll() {
+            if (thinkingPollInterval) {
+                clearInterval(thinkingPollInterval);
+                thinkingPollInterval = null;
+            }
+        }
+
+        async function fetchAndRenderThinking() {
+            try {
+                const resp = await fetch('/api/ai_thinking');
+                const state = await resp.json();
+                renderThinkingUI(state);
+            } catch (err) {
+                console.error('Error fetching AI thinking state:', err);
+            }
+        }
+
+        function renderThinkingUI(state) {
+            const wrapper = document.getElementById('thinking-content-wrapper');
+            if (!wrapper) return;
+
+            const isActive = state.active || state.phase === 'complete' || state.phase === 'complete (previous)' || state.phase === 'error' || state.phase === 'truncated';
+
+            if (!isActive && state.phase === 'idle') {
+                wrapper.innerHTML = `
+                    <div class="thinking-idle-state">
+                        <div class="idle-icon">🧠</div>
+                        <div class="idle-text">Neural inference engine idle.<br>Waiting for next AI Swarm analysis trigger...</div>
+                    </div>`;
+                return;
+            }
+
+            const phaseLabel = {
+                'idle': 'Idle',
+                'connecting': 'Connecting to GPU Swarm...',
+                'thinking': 'Deep Reasoning Active',
+                'analyzing': 'Multi-Agent Debate',
+                'complete': 'Analysis Complete',
+                                'complete (previous)': '✅ Last Complete Analysis',
+                'truncated': '⚠️ Incomplete — Context Window Exhausted',
+                'error': 'Inference Error'
+            }[state.phase] || state.phase;
+
+            const indicatorClass = (state.phase === 'error' || state.phase === 'truncated') ? 'error' : (state.active ? 'active' : (state.phase === 'complete' || state.phase === 'complete (previous)' ? 'complete' : ''));
+            const cursorHtml = state.active ? '<span class="stream-cursor"></span>' : '';
+
+            // Clean </think> tags from displayed text
+            const cleanThink = (state.thinking_text || '').replace(/<\/?think>/g, '').trim();
+            const cleanOutput = (state.output_text || '').replace(/<\/?think>/g, '').trim();
+            
+            // Gold v2.0: Parse AI decision for Indonesian conclusion panel
+            let conclusionHTML = '';
+            const decision = state.decision_json;
+            if (decision && decision.recommended_direction) {
+                const dir = (decision.recommended_direction || 'HOLD').toUpperCase();
+                const conf = parseFloat(decision.confidence || 0);
+                const sentiment = decision.final_sentiment || 'NEUTRAL';
+
+                const dirMap = { 'BUY': 'BELI', 'SELL': 'JUAL', 'HOLD': 'TAHAN' };
+                const dirText = dirMap[dir] || dir;
+                const confPct = Math.round(conf * 100);
+
+                const colorMap = { 'BUY': '#22c55e', 'SELL': '#ef4444', 'HOLD': '#f59e0b' };
+                const bgColorMap = { 'BUY': 'rgba(34,197,94,0.1)', 'SELL': 'rgba(239,68,68,0.1)', 'HOLD': 'rgba(245,158,11,0.1)' };
+                const color = colorMap[dir] || '#f59e0b';
+                const bgColor = bgColorMap[dir] || 'rgba(245,158,11,0.1)';
+
+                const sentimentMap = { 'BULLISH_USD': 'Bullish USD', 'BEARISH_USD': 'Bearish USD', 'NEUTRAL': 'Netral' };
+                const sentText = sentimentMap[sentiment] || sentiment;
+
+                const reasonMap = {
+                    'BUY': 'Sinyal BELI didasari oleh analisis multi-agen. Teknis dan fundamental mendukung posisi naik.',
+                    'SELL': 'Sinyal JUAL didasari oleh analisis multi-agen. Teknis dan fundamental mendukung posisi turun.',
+                    'HOLD': 'Kondisi pasar belum memenuhi syarat entry. Disarankan menunggu sinyal yang lebih kuat.'
+                };
+
+                conclusionHTML = `
+                    <div class="conclusion-panel" style="border-left: 4px solid ${color}; background: ${bgColor};">
+                        <div class="conclusion-header">
+                            <span class="conclusion-icon" style="background:${color};">${dir === 'BUY' ? '▲' : dir === 'SELL' ? '▼' : '■'}</span>
+                            <span class="conclusion-title" style="color:${color};">KESIMPULAN: ${dirText}</span>
+                            <span class="conclusion-conf">Kepercayaan: ${confPct}%</span>
+                        </div>
+                        <div class="conclusion-detail">
+                            <div class="conclusion-row"><span class="conclusion-label">Sentimen:</span> ${sentText}</div>
+                            <div class="conclusion-row"><span class="conclusion-label">Analisis:</span> ${reasonMap[dir] || ''}</div>
+                            ${decision.risk_assessment ? `<div class="conclusion-row"><span class="conclusion-label">Risiko:</span> ${decision.risk_assessment}</div>` : ''}
+                        </div>
+                    </div>`;
+            }
+
+            let agentPipelineHTML = '';
+            AGENT_DEFS.forEach(agent => {
+                const isCompleted = (state.agents_completed || []).includes(agent.id);
+                const isCurrent = state.current_agent === agent.id && state.active;
+                let nodeClass = '';
+                if (isCurrent) nodeClass = 'active-agent';
+                else if (isCompleted) nodeClass = 'completed';
+                agentPipelineHTML += `
+                    <div class="agent-node ${nodeClass}">
+                        <div class="agent-node-icon" style="background: ${agent.color}">${agent.avatar}</div>
+                        <div class="agent-node-info">
+                            <span class="agent-node-name">${agent.name}</span>
+                            <span class="agent-node-role">${agent.role}</span>
+                        </div>
+                        <span class="agent-node-check">${isCompleted ? '✓' : ''}</span>
+                    </div>`;
+            });
+
+            wrapper.innerHTML = `
+                <div class="thinking-container">
+                    <div class="thinking-neural-panel">
+                        <div class="thinking-status-bar">
+                            <div class="thinking-status-indicator ${indicatorClass}"></div>
+                            <div class="thinking-status-text">
+                                ${state.model ? `<span class="model-name">${state.model}</span> · ` : ''}${phaseLabel}
+                            </div>
+                            <div class="thinking-elapsed">${state.elapsed_seconds || 0}s</div>
+                        </div>
+                        <div class="agent-pipeline">
+                            ${agentPipelineHTML}
+                        </div>
+                        <div class="thinking-token-counter">
+                            Tokens: <span class="token-count-val">${state.tokens_generated || 0}</span>
+                        </div>
+                    </div>
+                    <div class="thinking-stream-panel">
+                        <div class="stream-label"><span class="dot" style="background: #a855f7;"></span> Internal Reasoning (Chain-of-Thought)</div>
+                        <div class="stream-box thinking-stream" id="thinking-stream-box">${cleanThink || '<span style="color:var(--text-muted);font-style:italic;">No internal reasoning captured yet...</span>'}${state.active && cleanThink ? cursorHtml : ''}</div>
+                        <div class="stream-label"><span class="dot" style="background: #10b981;"></span> Output Decision</div>
+                        <div class="stream-box output-stream" id="output-stream-box">${cleanOutput || '<span style="color:var(--text-muted);font-style:italic;">Waiting for model output...</span>'}${state.active && cleanOutput ? cursorHtml : ''}</div>
+                        ${conclusionHTML}
+                    </div>
+                </div>`;
+
+            // Auto-scroll stream boxes to bottom
+            const thinkBox = document.getElementById('thinking-stream-box');
+            const outBox = document.getElementById('output-stream-box');
+            if (thinkBox) thinkBox.scrollTop = thinkBox.scrollHeight;
+            if (outBox) outBox.scrollTop = outBox.scrollHeight;
+        }
+
+        function renderSwarmGraph(debate) {
+            const container = document.getElementById('d3-swarm-graph');
+            if (!debate || !debate.last_updated) {
+                container.innerHTML = `
+                    <div class="empty-state" id="graph-empty-state">
+                        Waiting for next market breakout trigger to run pre-trade simulation...
+                    </div>
+                `;
+                document.getElementById('mirofish-swarm-timestamp').innerText = 'Offline';
+                return;
+            }
+
+            document.getElementById('mirofish-swarm-timestamp').innerText = `LAST RUN: ${new Date(debate.last_updated).toLocaleTimeString()}`;
+            container.innerHTML = ''; // Clear container
+
+            const width = container.clientWidth || 400;
+            const height = container.clientHeight || 380;
+
+            const svg = d3.select('#d3-swarm-graph')
+                .append('svg')
+                .attr('viewBox', `0 0 ${width} ${height}`)
+                .attr('width', '100%')
+                .attr('height', '100%');
+
+            // Define node structure
+            const nodes = [
+                { id: "catalyst", label: "Catalyst Trigger", type: "catalyst", name: debate.pair + " " + debate.direction, role: "TRIGGER", details: "Breakout triggered on " + debate.pair + " at execution price " + debate.price.toFixed(5) + ".\n\nNews/Technical catalyst: " + (debate.catalyst || 'Unknown catalyst'), color: "#ffffff", avatar: "⚡", val: 20, x: 60, y: height / 2, fx: 60, fy: height / 2 },
+                { id: "retail", label: "Retail Swarm", type: "agent", name: "Retail crowd", role: "FOMO / Tech", details: debate.retail_trader_sentiment || "Analyzing sentiment...", color: "#f59e0b", avatar: "R", val: 16, x: width / 2 - 40, y: 70 },
+                { id: "whale", label: "Whale Maker", type: "agent", name: "Whale Maker", role: "Liquidity", details: debate.institutional_whale_outlook || "Analyzing order flows...", color: "#06b6d4", avatar: "W", val: 16, x: width / 2 - 40, y: height / 2 },
+                { id: "policy", label: "Policymaker", type: "agent", name: "Policymaker", role: "Macro / Fund", details: debate.policymaker_fundamental_view || "Analyzing news impact...", color: "#a855f7", avatar: "P", val: 16, x: width / 2 - 40, y: height - 70 },
+                { id: "consensus", label: "Risk Assessor", type: "consensus", name: "Risk Assessor", role: "Consensus Synthesis", details: debate.risk_assessment || "Synthesizing consensus...", color: "#10b981", avatar: "S", val: 18, x: width - 150, y: height / 2 },
+                { id: "execution", label: "Order Execution", type: "execution", name: "Execution Node", role: "Order Dispatcher", details: "Recommended direction: " + (debate.recommended_direction || 'NONE') + "\nConfidence: " + ((debate.confidence || 0) * 100).toFixed(0) + "%\nFinal Sentiment: " + (debate.final_sentiment || 'NEUTRAL').replace('_USD', ''), color: (debate.recommended_direction === 'BUY') ? 'var(--success)' : ((debate.recommended_direction === 'SELL') ? 'var(--danger)' : 'var(--text-muted)'), avatar: "E", val: 20, x: width - 50, y: height / 2, fx: width - 50, fy: height / 2 }
+            ];
+
+            const links = [
+                { source: "catalyst", target: "retail" },
+                { source: "catalyst", target: "whale" },
+                { source: "catalyst", target: "policy" },
+                { source: "retail", target: "consensus" },
+                { source: "whale", target: "consensus" },
+                { source: "policy", target: "consensus" },
+                { source: "consensus", target: "execution" }
+            ];
+
+            // Setup Arrow Markers
+            svg.append("defs").selectAll("marker")
+                .data(["suit"])
+                .enter().append("marker")
+                .attr("id", d => d)
+                .attr("viewBox", "0 -5 10 10")
+                .attr("refX", 22)
+                .attr("refY", 0)
+                .attr("markerWidth", 6)
+                .attr("markerHeight", 6)
+                .attr("orient", "auto")
+                .append("path")
+                .attr("d", "M0,-4L10,0L0,4")
+                .attr("fill", "rgba(255, 255, 255, 0.2)");
+
+            // Draw link lines
+            const link = svg.append("g")
+                .selectAll("line")
+                .data(links)
+                .enter().append("line")
+                .attr("stroke", "rgba(255, 255, 255, 0.15)")
+                .attr("stroke-width", 2)
+                .attr("marker-end", "url(#suit)");
+
+            // Force simulation
+            if (simulation) simulation.stop();
+            simulation = d3.forceSimulation(nodes)
+                .force("link", d3.forceLink(links).id(d => d.id).distance(120))
+                .force("charge", d3.forceManyBody().strength(-300))
+                .force("center", d3.forceCenter(width / 2, height / 2))
+                .on("tick", ticked);
+
+            // Create node elements
+            const node = svg.append("g")
+                .selectAll(".node")
+                .data(nodes)
+                .enter().append("g")
+                .attr("class", "node")
+                .call(d3.drag()
+                    .on("start", dragstarted)
+                    .on("drag", dragged)
+                    .on("end", dragended))
+                .on("click", (event, d) => showNodeDetails(d));
+
+            // Node circles with glowing ring
+            node.append("circle")
+                .attr("r", d => d.val)
+                .attr("fill", d => d.color)
+                .attr("stroke", "rgba(0, 0, 0, 0.6)")
+                .attr("stroke-width", 2)
+                .style("cursor", "pointer")
+                .style("filter", d => `drop-shadow(0px 0px 8px ${d.color}40)`);
+
+            // Node text letters
+            node.append("text")
+                .attr("dy", ".3em")
+                .attr("text-anchor", "middle")
+                .attr("fill", "#03060f")
+                .style("font-size", "0.75rem")
+                .style("font-weight", "800")
+                .style("pointer-events", "none")
+                .text(d => d.avatar || "");
+
+            // Label text below node
+            node.append("text")
+                .attr("dy", d => d.val + 14)
+                .attr("text-anchor", "middle")
+                .attr("fill", "var(--text-secondary)")
+                .style("font-size", "0.7rem")
+                .style("font-weight", "600")
+                .style("pointer-events", "none")
+                .text(d => d.label);
+
+            // Tick execution
+            function ticked() {
+                link
+                    .attr("x1", d => d.source.x)
+                    .attr("y1", d => d.source.y)
+                    .attr("x2", d => d.target.x)
+                    .attr("y2", d => d.target.y);
+
+                node
+                    .attr("transform", d => `translate(${d.x}, ${d.y})`);
+            }
+
+            function dragstarted(event, d) {
+                if (!event.active) simulation.alphaTarget(0.3).restart();
+                d.fx = d.x;
+                d.fy = d.y;
+            }
+
+            function dragged(event, d) {
+                d.fx = event.x;
+                d.fy = event.y;
+            }
+
+            function dragended(event, d) {
+                if (!event.active) simulation.alphaTarget(0);
+                if (d.id !== 'catalyst' && d.id !== 'execution') {
+                    d.fx = null;
+                    d.fy = null;
+                }
+            }
+
+            // Automatically select first node details (catalyst)
+            showNodeDetails(nodes[0]);
+        }
+
+        function showNodeDetails(node) {
+            const sidebar = document.getElementById('swarm-graph-sidebar');
+            if (!sidebar) return;
+            sidebar.innerHTML = `
+                <div class="sidebar-header">
+                    <div class="sidebar-avatar" style="background: ${node.color}">${node.avatar || 'T'}</div>
+                    <span class="sidebar-title">${node.name}</span>
+                    <span class="sidebar-role">${node.role}</span>
+                </div>
+                <div class="sidebar-content">${node.details}</div>
+            `;
+        }
+
+        async function fetchAndRenderWeekendLogs() {
+            try {
+                const response = await fetch('/api/weekend_training_logs');
+                const logs = await response.json();
+                
+                const container = document.getElementById('trainer-logs-list');
+                if (!container) return;
+                if (logs.length === 0) {
+                    container.innerHTML = `<div class="empty-state">No training episodes logged yet. Running simulations...</div>`;
+                    return;
+                }
+                
+                container.innerHTML = '';
+                logs.forEach((log, index) => {
+                    const dateStr = new Date(log.simulated_at).toLocaleString();
+                    const winLossClass = log.evaluation_result === 'CORRECT' ? 'var(--success)' : 
+                                         (log.evaluation_result === 'INCORRECT' ? 'var(--danger)' : 'var(--text-muted)');
+                    const rewardSign = log.reward_penalty >= 0 ? '+' : '';
+                    
+                    const detailsId = `log-details-${index}`;
+                    const isOpen = openReflectionId === detailsId ? 'open' : '';
+                    
+                    container.innerHTML += `
+                        <div class="trainer-log-row">
+                            <div class="trainer-log-summary" onclick="toggleReflectionDetails('${detailsId}')">
+                                <div>
+                                    <span style="font-weight: 700; color: ${winLossClass}">${log.evaluation_result}</span>
+                                    <span style="color: var(--text-secondary); margin-left: 0.5rem; font-family: 'JetBrains Mono';">${log.pair} ${log.predicted_direction}</span>
+                                    <span style="color: var(--text-muted); font-size: 0.75rem; margin-left: 0.5rem;">${dateStr}</span>
+                                </div>
+                                <div style="font-family: 'JetBrains Mono'; font-weight: 700;">
+                                    <span style="color: ${log.pips_gained >= 0 ? 'var(--success)' : 'var(--danger)'};">${log.pips_gained >= 0 ? '+' : ''}${log.pips_gained.toFixed(1)} pips</span>
+                                    <span style="color: var(--text-muted); margin: 0 0.4rem;">|</span>
+                                    <span style="color: ${log.reward_penalty >= 0 ? 'var(--success)' : 'var(--danger)'};">Reward: ${rewardSign}${log.reward_penalty.toFixed(1)}</span>
+                                </div>
+                            </div>
+                            <div class="trainer-log-details ${isOpen ? 'open' : ''}" id="${detailsId}">
+                                <div style="margin-bottom: 0.5rem; font-weight: 600; color: white;">AI Reasoning Catalyst:</div>
+                                <div style="font-family: 'JetBrains Mono'; font-size: 0.75rem; background: rgba(0, 0, 0, 0.3); padding: 0.5rem; border-radius: 0.25rem; margin-bottom: 0.75rem; white-space: pre-wrap; color: var(--text-secondary);">
+                                    ${log.ai_reasoning}
+                                </div>
+                                <div style="font-weight: 600; color: white; margin-bottom: 0.5rem;">Self-Reflection & Lessons Learned:</div>
+                                <div style="background: rgba(245, 158, 11, 0.03); border-left: 3px solid var(--accent-primary); padding: 0.75rem; border-radius: 0.25rem; color: var(--text-secondary);">
+                                    ${log.ai_lessons_learned}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+            } catch (err) {
+                console.error('Error loading training logs:', err);
+            }
+        }
+
+        function toggleReflectionDetails(id) {
+            const el = document.getElementById(id);
+            const isOpen = el.classList.contains('open');
+            // Close all
+            document.querySelectorAll('.trainer-log-details').forEach(d => d.classList.remove('open'));
+            
+            if (!isOpen) {
+                el.classList.add('open');
+                openReflectionId = id;
+            } else {
+                openReflectionId = null;
+            }
+        }
+
 
         function updateTime() {
             const now = new Date();
@@ -1313,93 +2137,57 @@
                     });
                 }
 
-                // Update News Swarm debate if any
-                const swarmTimestamp = document.getElementById('mirofish-swarm-timestamp');
-                const swarmContent = document.getElementById('mirofish-swarm-content');
-                
+                // Update News Swarm debate and Weekend training metrics
                 const debate = data.latest_market_debate || {};
+                
+                // Update Weekend Trainer KPIs
+                const ws = data.weekend_stats || {};
+                const runsEl = document.getElementById('trainer-total-runs');
+                const winRateEl = document.getElementById('trainer-win-rate');
+                const rewardEl = document.getElementById('trainer-reward');
+                const pipsEl = document.getElementById('trainer-avg-pips');
+                if (runsEl) runsEl.innerText = ws.total_runs || 0;
+                if (winRateEl) winRateEl.innerText = `${(ws.win_rate || 0.0).toFixed(1)}%`;
+                if (rewardEl) rewardEl.innerText = (ws.total_reward || 0.0).toFixed(1);
+                if (pipsEl) pipsEl.innerText = (ws.avg_pips || 0.0).toFixed(1);
+
+                // Update Bulb pulse color based on system mode
+                const bulb = document.getElementById('swarm-chamber-bulb');
+                if (bulb) {
+                    if (data.system_mode === 'WEEKEND_OFFLINE_TRAINING') {
+                        bulb.style.backgroundColor = 'var(--warning)';
+                        bulb.style.boxShadow = '0 0 8px var(--warning)';
+                    } else {
+                        bulb.style.backgroundColor = 'var(--accent-primary)';
+                        bulb.style.boxShadow = '0 0 8px var(--accent-primary)';
+                    }
+                }
+
+                // Render D3 graph
                 if (debate.last_updated) {
-                    swarmTimestamp.innerText = `LAST RUN: ${new Date(debate.last_updated).toLocaleTimeString()}`;
-                    
-                    const finalSentimentColor = debate.final_sentiment === 'BULLISH_USD' ? 'var(--success)' : 
-                                               (debate.final_sentiment === 'BEARISH_USD' ? 'var(--danger)' : 'var(--text-secondary)');
-                    const recommendedDirColor = debate.recommended_direction === 'BUY' ? 'var(--success)' : 
-                                                (debate.recommended_direction === 'SELL' ? 'var(--danger)' : 'var(--text-secondary)');
-                    
-                    swarmContent.innerHTML = `
-                        <div class="swarm-wrapper">
-                            <div class="swarm-trigger-banner">
-                                <div>
-                                    <span class="swarm-trigger-title">Breakout Triggered:</span>
-                                    <span style="font-family: 'JetBrains Mono'; font-weight: 700; margin-left: 0.35rem; color: ${debate.direction === 'BUY' ? 'var(--success)' : 'var(--danger)'};">${debate.pair} ${debate.direction}</span>
-                                    <span style="color: var(--text-muted); margin-left: 0.35rem;">@ ${debate.price.toFixed(2)}</span>
-                                </div>
-                                <div class="swarm-trigger-catalyst">
-                                    Catalyst: ${debate.catalyst}
-                                </div>
-                            </div>
-                            
-                            <div class="swarm-agents-grid">
-                                <!-- Retail Trader Swarm -->
-                                <div class="swarm-agent-card agent-retail">
-                                    <div class="swarm-agent-header">
-                                        <div class="swarm-agent-avatar">R</div>
-                                        <span class="swarm-agent-name">Retail Swarm</span>
-                                        <span class="swarm-agent-role">FOMO / Tech</span>
-                                    </div>
-                                    <div class="swarm-agent-message">
-                                        ${debate.retail_trader_sentiment}
-                                    </div>
-                                </div>
-                                
-                                <!-- Institutional Whale -->
-                                <div class="swarm-agent-card agent-whale">
-                                    <div class="swarm-agent-header">
-                                        <div class="swarm-agent-avatar">W</div>
-                                        <span class="swarm-agent-name">Whale Maker</span>
-                                        <span class="swarm-agent-role">Liquidity</span>
-                                    </div>
-                                    <div class="swarm-agent-message">
-                                        ${debate.institutional_whale_outlook}
-                                    </div>
-                                </div>
-                                
-                                <!-- Central Banker -->
-                                <div class="swarm-agent-card agent-policymaker">
-                                    <div class="swarm-agent-header">
-                                        <div class="swarm-agent-avatar">P</div>
-                                        <span class="swarm-agent-name">Policymaker</span>
-                                        <span class="swarm-agent-role">Macro / Fund</span>
-                                    </div>
-                                    <div class="swarm-agent-message">
-                                        ${debate.policymaker_fundamental_view}
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <div class="swarm-consensus-card">
-                                <div class="swarm-consensus-evaluation">
-                                    <span class="swarm-consensus-title">Risk Assessor Consensus</span>
-                                    <span class="swarm-consensus-text">${debate.risk_assessment}</span>
-                                </div>
-                                <div class="swarm-consensus-metric">
-                                    <span class="swarm-metric-label">Sentiment</span>
-                                    <span class="swarm-metric-value" style="color: ${finalSentimentColor}">${debate.final_sentiment.replace('_USD', '')}</span>
-                                </div>
-                                <div class="swarm-consensus-metric">
-                                    <span class="swarm-metric-label">Signal (Conf)</span>
-                                    <span class="swarm-metric-value" style="color: ${recommendedDirColor}">${debate.recommended_direction} (${(debate.confidence * 100).toFixed(0)}%)</span>
-                                </div>
-                            </div>
-                        </div>
-                    `;
+                    if (debate.last_updated !== lastSwarmDebateTime) {
+                        lastSwarmDebateTime = debate.last_updated;
+                        renderSwarmGraph(debate);
+                    }
                 } else {
-                    swarmTimestamp.innerText = 'Offline';
-                    swarmContent.innerHTML = `
-                        <div class="empty-state">
-                            Waiting for next market breakout trigger to run pre-trade simulation...
-                        </div>
-                    `;
+                    if (lastSwarmDebateTime !== null) {
+                        lastSwarmDebateTime = null;
+                        const container = document.getElementById('d3-swarm-graph');
+                        if (container) {
+                            container.innerHTML = `
+                                <div class="empty-state" id="graph-empty-state">
+                                    Waiting for next market breakout trigger to run pre-trade simulation...
+                                </div>
+                            `;
+                        }
+                        const ts = document.getElementById('mirofish-swarm-timestamp');
+                        if (ts) ts.innerText = 'Offline';
+                    }
+                }
+
+                // If weekend tab is active, keep training logs fresh
+                if (activeSwarmTab === 'weekend-trainer') {
+                    fetchAndRenderWeekendLogs();
                 }
 
                 // Update Console Logs

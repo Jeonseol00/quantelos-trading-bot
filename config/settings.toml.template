@@ -1,7 +1,7 @@
 # =============================================================================
-# Quantelos AI Trader — Master Configuration Template
+# Quantelos AI Trader — Master Configuration
 # =============================================================================
-# Copy this file to config/settings.toml and fill in your credentials.
+# Classification: Sangat Rahasia / Internal
 # =============================================================================
 
 [project]
@@ -11,10 +11,12 @@ mode    = "DEMO"  # "DEMO" | "LIVE"
 owner   = "Muhamad Fikri"
 
 # ─── OANDA Broker Configuration ──────────────────────────────────────────────
+# REGIONAL DIVISION: OANDA Asia Pacific (migrated from BVI — REST v20 API blocked on BVI)
 [oanda]
-api_url        = "https://api-fxpractice.oanda.com"
-account_id     = "YOUR_OANDA_ACCOUNT_ID"
-api_token      = "YOUR_OANDA_API_TOKEN"
+api_url        = "https://api-fxpractice.oanda.com"   # Demo endpoint (Asia Pacific)
+# api_url      = "https://api-fxtrade.oanda.com"      # Live endpoint (DO NOT USE UNTIL APPROVED)
+account_id     = "101-003-39529667-001"                 # OANDA Asia Pacific Demo Account
+api_token      = "267d6e61673dc9f99b78366c41255e52-980c7867af1f51b709aa9ddd1546956a"
 stream_url     = "https://stream-fxpractice.oanda.com"
 instruments    = ["XAU_USD"]
 
@@ -22,11 +24,13 @@ instruments    = ["XAU_USD"]
 [risk]
 initial_capital_usc   = 12000000  # Scaled to live practice size (100,000 SGD)
 max_drawdown_pct      = 0.15      # 15% MDD limit
-risk_per_trade_pct    = 0.002     # Calibrated to 0.2% risk per trade for stability
-min_risk_reward_ratio = 1.0       # Scalping allows 1:1 risk-reward
-max_slippage_pips     = 2.0       # Cancel order if slippage > 2 pips
+risk_per_trade_pct    = 0.01      # Calibrated to 1.0% risk per trade for standard accounts
+min_risk_reward_ratio = 1.5       # MINIMUM 1:1.5 risk-reward (Gold volatility demands positive expectancy)
+max_slippage_pips     = 5.0       # Gold has wider spreads; 5 pips max slippage tolerance
 max_open_positions    = 2         # Maximum concurrent positions
-whipsaw_freeze_sec    = 1800      # 30-minute freeze after fakeout detection
+whipsaw_freeze_sec    = 600       # 10-minute freeze after fakeout detection (Gold swings wider)
+max_consecutive_losses = 3        # After 3 consecutive losses, freeze trading for loss_streak_freeze_sec
+loss_streak_freeze_sec = 1800     # 30-minute freeze after hitting max consecutive losses
 
 # ─── ZeroMQ IPC Configuration ────────────────────────────────────────────────
 [zmq]
@@ -41,28 +45,35 @@ path         = "./data/quantelos.db"
 journal_mode = "WAL"
 busy_timeout = 5000
 
-# ─── Technical Analysis Parameters (MRD-Locked) ──────────────────────────────
+# ─── Technical Analysis Parameters (Gold-Tuned v2.0) ─────────────────────────
 [strategy]
 name             = "QUANTITATIVE_SNIPER"
 timeframe        = "M5"              # Scalping runs on M5 execution timeframe
-active_mode      = "MTF_SCALPER"     # "QUANTITATIVE_SNIPER" | "MTF_SCALPER"
+active_mode      = "MTF_SCALPER"     # "QUANTITATIVE_SNIPER" (legacy M15 breakout/reversion) | "MTF_SCALPER"
 atr_period       = 14
-atr_squeeze_threshold_pips = 80.0   # Below this = squeeze detected
+atr_squeeze_threshold_pips = 180.0  # Gold's "calm" is ~150-200 pips; below 180 = squeeze
 bollinger_period = 20
 bollinger_std    = 2.0
 bollinger_bandwidth_percentile = 25  # Bandwidth < 25th percentile of 20-day history
 rsi_period       = 14
 rsi_neutral_low  = 40
 rsi_neutral_high = 60
-scalping_rsi_low = 42                # Relaxed from 35 to increase entry probability
-scalping_rsi_high = 58               # Relaxed from 65 to increase entry probability
-scalping_vwap_std = 1.3              # Reduced from 1.5 to make Keltner Channels narrower
-scalping_trend_filter = false
-scalping_stop_pips = 12.0
-scalping_target_pips = 12.0
-scalping_atr_tp_mult = 1.0           # Tighter target to secure profit quickly (1.0x ATR)
-scalping_atr_sl_mult = 1.0           # 1.0x ATR stop loss to maintain 1:1 risk-reward
-allow_asia_scalping = true
+scalping_rsi_low = 30                # Only trigger on EXTREME oversold (Gold needs wide extremes)
+scalping_rsi_high = 70               # Only trigger on EXTREME overbought
+scalping_vwap_std = 2.0              # Wider Keltner Channels to filter Gold's noise floor
+scalping_trend_filter = true         # Enforce trend-following trading alignment
+cooldown_sec = 600                   # 10-minute cooldown between scalps (prevent overtrading)
+news_block_pre_min = 10              # Block trading 10 minutes before high-impact news
+news_block_post_min = 15             # Block trading 15 minutes after high-impact news
+scalping_stop_pips = 60.0            # Gold-tuned: $6.00 SL minimum (60 pips × 0.1)
+scalping_target_pips = 120.0         # Gold-tuned: $12.00 TP target (120 pips × 0.1)
+scalping_atr_tp_mult = 3.0           # 3.0x ATR for TP — let winners run on Gold
+scalping_atr_sl_mult = 2.0           # 2.0x ATR for SL — give Gold breathing room
+scalping_min_sl_price = 5.0          # Minimum SL distance in price ($5.00 for Gold)
+scalping_min_tp_price = 8.0          # Minimum TP distance in price ($8.00 for Gold)
+max_spread_pips = 8.0               # Max acceptable spread before blocking entry (Gold: $0.80)
+staleness_check_sec = 60             # Re-validate price if AI inference takes >60s
+allow_asia_scalping = false          # BLOCK Asia session for Gold (low liquidity = false signals)
 
 # ─── Market Time Windows (MRD-Locked, WIB / UTC+7) ───────────────────────────
 [market_windows]
@@ -78,19 +89,24 @@ golden_window_end    = "22:00"
 # ─── Kaggle AI Brain Configuration ───────────────────────────────────────────
 [kaggle]
 sync_method     = "manual"       # "supabase" | "github_gist" | "manual"
-supabase_url    = "YOUR_SUPABASE_URL"
-supabase_key    = "YOUR_SUPABASE_SERVICE_ROLE_KEY"
+supabase_url    = "https://nlbfhwmiovneqppvzsra.supabase.co"
+supabase_key    = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5sYmZod21pb3ZuZXFwcHZ6c3JhIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MDc1MjU3MCwiZXhwIjoyMDk2MzI4NTcwfQ.aqTavm4LgEm85tV8onIexUA825bt8onR6P8ojirWPmc"
 gist_id         = ""
 poll_interval_s = 30               # How often ASUS checks for new Kaggle URL
-inference_timeout_s = 15           # Max wait for LLM response
-fallback_model  = "vader"          # Local fallback: "vader" | "distilbert"
+inference_timeout_s = 180          # Max wait for LLM (DeepSeek-R1:32b chain-of-thought needs time)
+target_model    = "deepseek-r1:32b"
+num_predict     = 4096             # Increased for DeepSeek-R1 thinking tokens + output
+ollama_num_ctx  = 16384            # Context window size (prompt+thinking+output must fit)
+fallback_model  = "none"           # DISABLED: No VADER fallback for live trading (safety)
+min_ai_confidence = 0.60           # DeepSeek-R1 confidence is well-calibrated; 0.60 threshold
+block_trade_on_ai_failure = true   # Hard-block trading when AI brain is unreachable
 
 # ─── Notification Channels ───────────────────────────────────────────────────
 [notifications]
 enabled        = true
-discord_webhook = "YOUR_DISCORD_WEBHOOK_URL"
-telegram_bot_token = "YOUR_TELEGRAM_BOT_TOKEN"
-telegram_chat_id   = "YOUR_TELEGRAM_CHAT_ID"
+discord_webhook = "https://discord.com/api/webhooks/1512837047247831050/fEST0sgzQsf6LxVUVmoDsqqeeyNf1ujuU7VmwC2wq92354zFjqo2jRbsNl0tr1aGcE5Z"
+telegram_bot_token = "8944090913:AAHFAmhmKku-mz9aLfunixemJnnWb_3NQPs"
+telegram_chat_id   = "6462607253"
 alert_on_trade     = true
 alert_on_error     = true
 alert_on_heartbeat_fail = true

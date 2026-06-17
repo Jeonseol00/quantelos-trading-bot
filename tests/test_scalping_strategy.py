@@ -24,7 +24,7 @@ def test_scalping_buy_signal():
     # 1. Prepare H1 candles (Bullish Trend: EMA200 = 2300, current price = 2320)
     h1_data = []
     # Fill older candles with lower prices so EMA200 is around 2300
-    for i in range(199):
+    for i in range(249):
         h1_data.append(create_mock_candle(2300.0))
     h1_data.append(create_mock_candle(2320.0))
     df_h1 = pd.DataFrame(h1_data)
@@ -55,7 +55,7 @@ def test_scalping_buy_signal():
 
     # Let's craft the dataframe values so they compute correctly.
     # H1 Trend:
-    closes_h1 = np.ones(200) * 2300.0
+    closes_h1 = np.ones(250) * 2300.0
     closes_h1[-1] = 2320.0 # Price > EMA200
     df_h1 = pd.DataFrame({
         "open": closes_h1, "high": closes_h1 + 1, "low": closes_h1 - 1, "close": closes_h1, "volume": 1000
@@ -99,7 +99,7 @@ def test_scalping_sell_signal():
 
     # Bearish setup
     # H1 Trend: Bearish (Price < EMA200)
-    closes_h1 = np.ones(200) * 2350.0
+    closes_h1 = np.ones(250) * 2350.0
     closes_h1[-1] = 2320.0
     df_h1 = pd.DataFrame({
         "open": closes_h1, "high": closes_h1 + 1, "low": closes_h1 - 1, "close": closes_h1, "volume": 1000

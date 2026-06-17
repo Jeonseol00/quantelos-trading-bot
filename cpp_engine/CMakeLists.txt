@@ -12,11 +12,13 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(ZMQ REQUIRED libzmq)
 pkg_check_modules(SQLITE3 REQUIRED sqlite3)
+find_package(CURL REQUIRED)
 
 # ─── Include Directories ─────────────────────────────────────────────────────
 include_directories(${CMAKE_SOURCE_DIR}/include)
 include_directories(${ZMQ_INCLUDE_DIRS})
 include_directories(${SQLITE3_INCLUDE_DIRS})
+include_directories(${CURL_INCLUDE_DIRS})
 
 # ─── Main Executable ─────────────────────────────────────────────────────────
 add_executable(quantelos_executor
@@ -25,6 +27,7 @@ add_executable(quantelos_executor
 target_link_libraries(quantelos_executor
     ${ZMQ_LIBRARIES}
     ${SQLITE3_LIBRARIES}
+    ${CURL_LIBRARIES}
     pthread
 )
 

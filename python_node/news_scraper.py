@@ -130,15 +130,24 @@ class NewsScraper:
             return []
 
     def _layer2_stealth(self) -> list[NewsEvent]:
-        """Layer 2: Playwright Stealth browser with RAM limits."""
-        try:
+        """Layer 2: Playwright Stealth browser with RAM limits and kill timeout."""
+        import concurrent.futures
+        def _run_stealth_fetch():
             fetcher = StealthFetcher(auto_match=True)
             page = fetcher.get(
                 "https://www.forexfactory.com/calendar",
                 timeout=15000,
             )
-            events = self._parse_forex_factory(page.text)
-            return events
+            return self._parse_forex_factory(page.text)
+
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(_run_stealth_fetch)
+                try:
+                    return future.result(timeout=self.force_kill_s)
+                except concurrent.futures.TimeoutError:
+                    logger.error("L2 Stealth exceeded %ds kill timeout. Aborting.", self.force_kill_s)
+                    return []
         except Exception as e:
             logger.error("L2 Stealth failed: %s", e)
             return []

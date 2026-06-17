@@ -16,6 +16,8 @@ tomli>=2.0; python_version<"3.11"  # TOML parser for Python < 3.11
 
 # ─── AI & NLP ─────────────────────────────────────────────────────────────────
 vaderSentiment>=3.3.2          # Local sentiment fallback (VADER)
+chromadb>=0.4.20               # Vector RAG Memory Database
+sentence-transformers>=2.2.2   # Local embedding models for Vector Memory
 
 # ─── Scraping ─────────────────────────────────────────────────────────────────
 beautifulsoup4>=4.12           # HTML parser

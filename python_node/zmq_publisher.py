@@ -30,6 +30,7 @@ class TradeSignal:
     confidence: float       # AI confidence score [0.0 - 1.0]
     news_catalyst: str      # Description of triggering news event
     timestamp: str          # ISO 8601 timestamp
+    trade_id: str = ""      # FIX C-04: Required for CLOSE_TRADE signals
 
 
 class ZMQPublisher:

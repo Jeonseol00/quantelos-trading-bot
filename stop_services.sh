@@ -2,7 +2,9 @@
 # =============================================================================
 # Quantelos AI Trader — Stop Services Script
 # =============================================================================
-cd /home/titiw/Downloads/Forex/quantelos
+# Set current working directory dynamically
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 
 echo "Terminating all Quantelos services..."
 pkill -f quantelos_executor || true

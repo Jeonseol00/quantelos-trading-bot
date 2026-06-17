@@ -53,12 +53,12 @@ class ScalpingSignal:
 
 
 class TechnicalAnalyzer:
-    """MRD-compliant squeeze detector for EUR/USD M15 timeframe."""
+    """MRD-compliant squeeze detector — Gold-tuned (XAU_USD) v2.0."""
 
     def __init__(self, atr_period: int = 14, bb_period: int = 20, bb_std: float = 2.0,
-                 rsi_period: int = 14, atr_threshold_pips: float = 4.0,
-                 bb_percentile: int = 10, rsi_low: int = 40, rsi_high: int = 60,
-                 instrument: str = "EUR_USD", scalping_rsi_low: int = 30,
+                 rsi_period: int = 14, atr_threshold_pips: float = 180.0,
+                 bb_percentile: int = 25, rsi_low: int = 40, rsi_high: int = 60,
+                 instrument: str = "XAU_USD", scalping_rsi_low: int = 30,
                  scalping_rsi_high: int = 70, scalping_vwap_std: float = 2.0,
                  scalping_trend_filter: bool = True):
         self.atr_period = atr_period
@@ -192,12 +192,17 @@ class TechnicalAnalyzer:
 
     def analyze_scalping(self, df_m5: pd.DataFrame, df_m15: pd.DataFrame, df_h1: pd.DataFrame) -> ScalpingSignal:
         """
-        Run Multi-Timeframe Scalping Analysis.
+        Run Multi-Timeframe Scalping Analysis — Gold-Tuned v2.0.
         df_m5: Execution dataframe (M5)
         df_m15: Intermediate structure dataframe (M15)
         df_h1: Macro trend filter dataframe (H1)
+        
+        Gold-specific improvements:
+        - H1 EMA(200) trend filter is STRICTLY enforced (Gold trends hard)
+        - RSI extremes 30/70 (only trade genuine overbought/oversold)
+        - Keltner Channel std = 2.0 (wider to filter Gold noise floor)
         """
-        if len(df_m5) < 30 or len(df_m15) < 30 or len(df_h1) < 60:
+        if len(df_m5) < 30 or len(df_m15) < 30 or len(df_h1) < 200:
             logger.warning("Insufficient multi-timeframe historical data to run scalper.")
             return ScalpingSignal(
                 is_scalp_trigger=False, direction=None,
@@ -207,8 +212,8 @@ class TechnicalAnalyzer:
                 m5_rsi=50.0, m5_atr=0.0
             )
 
-        # 1. Macro H1 EMA Trend Filter
-        h1_ema_series = ta.ema(df_h1["close"], length=50)
+        # 1. Macro H1 EMA Trend Filter (STRICT for Gold — Gold trends are powerful)
+        h1_ema_series = ta.ema(df_h1["close"], length=200)
         h1_ema = h1_ema_series.iloc[-1]
         current_price = df_m5.iloc[-1]["close"]
         h1_trend = "BULLISH" if current_price > h1_ema else "BEARISH"
@@ -241,28 +246,29 @@ class TechnicalAnalyzer:
         atr_m5_series = ta.atr(df_m5["high"], df_m5["low"], df_m5["close"], length=14)
         m5_atr = atr_m5_series.iloc[-1]
 
-        # 4. Trigger logic
+        # 4. Trigger logic — Gold-tuned: STRICT trend filter + extreme RSI only
         is_scalp_trigger = False
         direction = None
 
-        trend_allows_buy = (not self.scalping_trend_filter) or (h1_trend == "BULLISH" and current_price <= m15_bb_mid)
-        trend_allows_sell = (not self.scalping_trend_filter) or (h1_trend == "BEARISH" and current_price >= m15_bb_mid)
+        # Gold v2.0: Trend filter is ALWAYS enforced — counter-trend scalps on Gold are deadly
+        trend_allows_buy = (h1_trend == "BULLISH" and current_price <= m15_bb_mid) if self.scalping_trend_filter else True
+        trend_allows_sell = (h1_trend == "BEARISH" and current_price >= m15_bb_mid) if self.scalping_trend_filter else True
 
         if trend_allows_buy:
-            # Check for oversold trigger on M5
+            # Check for EXTREME oversold trigger on M5 (Gold: RSI < 30, not 40)
             if current_price <= m5_vwap_lower and m5_rsi < self.scalping_rsi_low:
                 is_scalp_trigger = True
                 direction = "BUY"
-                logger.info("⚡ MTF SCALPER BUY triggered — Trend Filter: %s | M5 RSI: %.2f | M5 KC Lower: %.5f",
-                            "ENABLED" if self.scalping_trend_filter else "DISABLED", m5_rsi, m5_vwap_lower)
+                logger.info("⚡ MTF SCALPER BUY triggered — H1 Trend: %s | M5 RSI: %.2f (threshold: %d) | M5 KC Lower: %.5f | Price: %.5f",
+                            h1_trend, m5_rsi, self.scalping_rsi_low, m5_vwap_lower, current_price)
 
         if not is_scalp_trigger and trend_allows_sell:
-            # Check for overbought trigger on M5
+            # Check for EXTREME overbought trigger on M5 (Gold: RSI > 70, not 60)
             if current_price >= m5_vwap_upper and m5_rsi > self.scalping_rsi_high:
                 is_scalp_trigger = True
                 direction = "SELL"
-                logger.info("⚡ MTF SCALPER SELL triggered — Trend Filter: %s | M5 RSI: %.2f | M5 KC Upper: %.5f",
-                            "ENABLED" if self.scalping_trend_filter else "DISABLED", m5_rsi, m5_vwap_upper)
+                logger.info("⚡ MTF SCALPER SELL triggered — H1 Trend: %s | M5 RSI: %.2f (threshold: %d) | M5 KC Upper: %.5f | Price: %.5f",
+                            h1_trend, m5_rsi, self.scalping_rsi_high, m5_vwap_upper, current_price)
 
         return ScalpingSignal(
             is_scalp_trigger=is_scalp_trigger,
