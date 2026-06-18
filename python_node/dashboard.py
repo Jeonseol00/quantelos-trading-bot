@@ -16,6 +16,22 @@ PORT = 8050
 DB_PATH = Path("./data/quantelos.db")
 LOG_PATH = Path("./logs/quantelos.log")
 
+# Reader connections must tolerate brief WAL-checkpoint locks taken by the
+# orchestrator's high-frequency writes. Without busy_timeout, a concurrent
+# write can raise OperationalError and bubble up as HTTP 500, breaking the
+# 1s dashboard polling loop.
+DB_BUSY_TIMEOUT_MS = 5000
+
+
+def _open_db() -> sqlite3.Connection:
+    """Open a read-only SQLite connection tuned for safe concurrent reads."""
+    conn = sqlite3.connect(
+        f"file:{DB_PATH}?mode=ro", uri=True, timeout=DB_BUSY_TIMEOUT_MS / 1000
+    )
+    conn.row_factory = sqlite3.Row
+    conn.execute(f"PRAGMA busy_timeout = {DB_BUSY_TIMEOUT_MS}")
+    return conn
+
 # Load HTML template dynamically
 try:
     TEMPLATE_PATH = Path(__file__).parent / "dashboard_template.html"
@@ -41,26 +57,40 @@ class DashboardRequestHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(content.encode("utf-8"))
         elif self.path == '/api/data':
-            data = self._get_dashboard_data()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps(data).encode("utf-8"))
+            self._send_json(self._safe(self._get_dashboard_data, {}))
         elif self.path == '/api/weekend_training_logs':
-            logs = self._get_weekend_training_logs()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps(logs).encode("utf-8"))
+            self._send_json(self._safe(self._get_weekend_training_logs, []))
         elif self.path == '/api/ai_thinking':
-            thinking = self._get_ai_thinking_state()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps(thinking).encode("utf-8"))
+            self._send_json(self._safe(self._get_ai_thinking_state, self._default_thinking_state()))
         else:
             self.send_response(404)
             self.end_headers()
+
+    def _safe(self, fn, default):
+        """Run a data fetcher, always returning a JSON-serializable value.
+
+        Guarantees the API never raises and surfaces as HTTP 500, which would
+        break the frontend polling loop. On any error (e.g. SQLite lock) the
+        provided default is returned instead.
+        """
+        try:
+            return fn()
+        except Exception:
+            return default
+
+    def _send_json(self, payload):
+        body = json.dumps(payload).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        self.wfile.write(body)
+
+    @staticmethod
+    def _default_thinking_state() -> dict:
+        return {"active": False, "phase": "idle", "model": "", "tokens_generated": 0,
+                "thinking_text": "", "output_text": "", "current_agent": None,
+                "agents_completed": [], "elapsed_seconds": 0, "error": None,
+                "decision_json": None}
 
     def do_POST(self):
         if self.path == '/api/halt':
@@ -80,8 +110,7 @@ class DashboardRequestHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
 
     def _get_dashboard_data(self) -> dict:
-        conn = sqlite3.connect(str(DB_PATH))
-        conn.row_factory = sqlite3.Row
+        conn = _open_db()
         cursor = conn.cursor()
         
         # 1. Fetch system states
@@ -256,8 +285,7 @@ class DashboardRequestHandler(http.server.BaseHTTPRequestHandler):
         }
 
     def _get_weekend_training_logs(self) -> list[dict]:
-        conn = sqlite3.connect(str(DB_PATH))
-        conn.row_factory = sqlite3.Row
+        conn = _open_db()
         cursor = conn.cursor()
         logs = []
         try:
@@ -274,12 +302,8 @@ class DashboardRequestHandler(http.server.BaseHTTPRequestHandler):
 
     def _get_ai_thinking_state(self) -> dict:
         """Read the live AI thinking state from SQLite system_state table."""
-        conn = sqlite3.connect(str(DB_PATH))
-        conn.row_factory = sqlite3.Row
-        default = {"active": False, "phase": "idle", "model": "", "tokens_generated": 0,
-                   "thinking_text": "", "output_text": "", "current_agent": None,
-                   "agents_completed": [], "elapsed_seconds": 0, "error": None,
-                   "decision_json": None}
+        conn = _open_db()
+        default = self._default_thinking_state()
         try:
             row = conn.execute(
                 "SELECT config_value FROM system_state WHERE config_key = 'ai_thinking_state'"

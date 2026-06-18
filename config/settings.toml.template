@@ -15,8 +15,8 @@ owner   = "Muhamad Fikri"
 [oanda]
 api_url        = "https://api-fxpractice.oanda.com"   # Demo endpoint (Asia Pacific)
 # api_url      = "https://api-fxtrade.oanda.com"      # Live endpoint (DO NOT USE UNTIL APPROVED)
-account_id     = "101-003-39529667-001"                 # OANDA Asia Pacific Demo Account
-api_token      = "267d6e61673dc9f99b78366c41255e52-980c7867af1f51b709aa9ddd1546956a"
+account_id     = "YOUR-OANDA-ACCOUNT-ID"                # e.g. 101-003-XXXXXXXX-001
+api_token      = "YOUR-OANDA-API-TOKEN"                 # Generate in the OANDA dashboard; never commit a real token
 stream_url     = "https://stream-fxpractice.oanda.com"
 instruments    = ["XAU_USD"]
 
