@@ -82,6 +82,7 @@ class KaggleBridge:
         self._url_cache_ttl = 30  # Re-check Kaggle URL every 30s
         self._last_catalyst = "Technical Breakout"
         self._last_direction = "HOLD"
+        self._last_pair = ""
 
         # Live AI Thinking State (thread-safe, polled by dashboard)
         self._thinking_lock = threading.Lock()
@@ -107,16 +108,59 @@ class KaggleBridge:
             import tomllib
         except ImportError:
             import tomli as tomllib
+        # Fail-fast: a trading daemon must NEVER silently run on an empty/default
+        # config. A malformed TOML (e.g. duplicate keys -> TOMLDecodeError) or a
+        # missing file is a fatal startup condition, not something to swallow.
         try:
             with open("config/settings.toml", "rb") as f:
                 self.cfg = tomllib.load(f)
-        except Exception as e:
-            logger.error("Failed to load config in KaggleBridge: %s", e)
-            self.cfg = {}
+        except FileNotFoundError as e:
+            logger.critical("FATAL: config/settings.toml not found: %s", e)
+            raise
+        except tomllib.TOMLDecodeError as e:
+            logger.critical(
+                "FATAL: config/settings.toml is invalid (likely a duplicate key): %s", e
+            )
+            raise
+        # Validate required keys/types so a typo cannot start the engine with
+        # default risk parameters.
+        self._validate_config(self.cfg)
         
-        self.num_predict = self.cfg.get("kaggle", {}).get("num_predict", 4096)  # Gold v2.0: increased for DeepSeek-R1 thinking tokens
+        # Absolute wall-clock cap for a single streaming inference. The per-socket
+        # read timeout is NOT sufficient: SSE keep-alive bytes reset it, so a
+        # stalled stream could otherwise block the orchestrator indefinitely.
+        self.max_inference_seconds = self.cfg.get("kaggle", {}).get("inference_timeout_s", 180)
+
         self.fallback_model = self.cfg.get("kaggle", {}).get("fallback_model", "none")  # Gold v2.0: read fallback config
         logger.info("KaggleBridge initialized — num_predict: %d | fallback_model: %s", self.num_predict, self.fallback_model)
+
+    @staticmethod
+    def _validate_config(cfg: dict) -> None:
+        """Validate required config sections/keys and basic types at startup.
+
+        Raises ValueError on the first problem so a misconfiguration fails the
+        daemon immediately instead of degrading to unsafe defaults.
+        """
+        required = {
+            ("kaggle", "sync_method"): str,
+            ("kaggle", "router_api_key"): str,
+            ("kaggle", "target_model"): str,
+            ("oanda", "instruments"): list,
+        }
+        for (section, key), expected_type in required.items():
+            value = cfg.get(section, {}).get(key)
+            if value is None:
+                raise ValueError(
+                    f"FATAL: required config '{section}.{key}' is missing in settings.toml"
+                )
+            if not isinstance(value, expected_type):
+                raise ValueError(
+                    f"FATAL: config '{section}.{key}' must be of type "
+                    f"{expected_type.__name__}, got {type(value).__name__}"
+                )
+        instruments = cfg.get("oanda", {}).get("instruments", [])
+        if not instruments:
+            raise ValueError("FATAL: 'oanda.instruments' must contain at least one instrument")
 
     def sync_kaggle_url(self) -> str | None:
         """Fetch latest Kaggle URL from Supabase and update local database."""
@@ -186,6 +230,7 @@ class KaggleBridge:
         """Construct the MiroFish-inspired multi-agent Forex market crowd simulation prompt with past memory and multi-turn reasoning."""
         self._last_catalyst = catalyst
         self._last_direction = direction
+        self._last_pair = pair
         pair_display = pair.replace("_", "/")
         
         # Format past failures if they exist
@@ -299,7 +344,7 @@ You MUST wrap your internal reasoning inside <think> and </think> tags. Provide 
                     logger.info("Connecting to %s GPU Swarm backend (%s) with streaming...", api_type.upper(), target_model)
                     self._preserve_last_thinking()
                     self._update_thinking(active=True, phase="connecting", model=target_model,
-                                          pair=self._last_direction, direction=self._last_direction,
+                                          pair=self._last_pair, direction=self._last_direction,
                                           started_at=time.time(), tokens_generated=0,
                                           thinking_text="", output_text="", error=None,
                                           current_agent=None, agents_completed=[])
@@ -331,7 +376,9 @@ You MUST wrap your internal reasoning inside <think> and </think> tags. Provide 
                             },
                             headers=headers,
                             stream=True,
-                            timeout=self.timeout
+                            # (connect timeout, read timeout). The read timeout is
+                            # per-chunk; the absolute deadline below caps total time.
+                            timeout=(5, min(self.timeout, 30))
                         )
                         resp.raise_for_status()
                         logger.info("OpenAI streaming started — model: %s | endpoint: %s", target_model, endpoint)
@@ -369,6 +416,16 @@ You MUST wrap your internal reasoning inside <think> and </think> tags. Provide 
                     first_chunk_logged = False
 
                     for line in resp.iter_lines():
+                        # Absolute wall-clock guard: SSE keep-alive comments reset
+                        # the per-socket read timeout, so without this an idle or
+                        # half-open stream could hang the orchestrator forever.
+                        if time.time() - start_time > self.max_inference_seconds:
+                            logger.warning(
+                                "LLM stream exceeded max_inference_seconds=%ds — aborting stream.",
+                                self.max_inference_seconds,
+                            )
+                            done_reason = "timeout"
+                            break
                         if line:
                             line_count += 1
                             decoded = line.decode('utf-8')
@@ -401,6 +458,7 @@ You MUST wrap your internal reasoning inside <think> and </think> tags. Provide 
                                         if finish_reason:
                                             if finish_reason == "length": done_reason = "length"
                                             elif finish_reason == "stop": done_reason = "stop"
+                                            else: done_reason = finish_reason
                                     except json.JSONDecodeError:
                                         continue
                                 else:
@@ -473,7 +531,17 @@ You MUST wrap your internal reasoning inside <think> and </think> tags. Provide 
                             if done_reason and api_type == "ollama" and data.get("done", False):
                                 break
                             elif done_reason and api_type == "openai" and done_reason in ["stop", "length"]:
-                                pass # Handled by finish_reason above
+                                # Some gateways send finish_reason but never emit the
+                                # [DONE] sentinel. Break here so we don't block until
+                                # the read timeout fires on an already-finished stream.
+                                break
+
+                    # Ensure the streaming socket is always released even if a later
+                    # parsing step raises; prevents fd/connection leaks in the daemon.
+                    try:
+                        resp.close()
+                    except Exception:
+                        pass
 
                     # Gold v2.0: Fallback — if output_buffer is empty, extract JSON from full_text
                     full_text = "".join(full_response)
@@ -587,20 +655,24 @@ You MUST wrap your internal reasoning inside <think> and </think> tags. Provide 
             else:
                 logger.warning("Failed to parse LLM response. Raw text was: %s", raw_text)
 
-        # Gold v2.0: Check fallback model configuration
-        if self.fallback_model == "none":
-            logger.error("❌ AI brain unavailable and fallback_model='none'. BLOCKING trade — no AI validation.")
-            return {
-                "final_sentiment": "AI_UNAVAILABLE",
-                "confidence": 0.0,
-                "recommended_direction": "HOLD",
-                "decision": "HOLD",
-                "source": "blocked_no_ai",
-                "retail_trader_sentiment": "AI Brain unreachable — trade blocked for safety.",
-                "institutional_whale_outlook": "",
-                "policymaker_fundamental_view": "",
-                "risk_assessment": "AI validation required but unavailable.",
-            }
+        # AI brain unavailable or unparseable. Whatever the fallback setting, never
+        # return None here: callers index result["decision"], so a None would crash
+        # the orchestrator and bypass the safety block entirely.
+        if self.fallback_model != "none":
+            return self._local_fallback(self._last_catalyst)
+
+        logger.error("❌ AI brain unavailable and fallback_model='none'. BLOCKING trade — no AI validation.")
+        return {
+            "final_sentiment": "AI_UNAVAILABLE",
+            "confidence": 0.0,
+            "recommended_direction": "HOLD",
+            "decision": "HOLD",
+            "source": "blocked_no_ai",
+            "retail_trader_sentiment": "AI Brain unreachable — trade blocked for safety.",
+            "institutional_whale_outlook": "",
+            "policymaker_fundamental_view": "",
+            "risk_assessment": "AI validation required but unavailable.",
+        }
 
     def infer(self, news_payload: str, technical_context: dict) -> dict:
         """Legacy method for direct news + technical inference."""
