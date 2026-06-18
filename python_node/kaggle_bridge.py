@@ -135,6 +135,9 @@ class KaggleBridge:
         self.num_predict = self.cfg.get("kaggle", {}).get("num_predict", 4096)
         logger.info("KaggleBridge initialized — num_predict: %d | fallback_model: %s", self.num_predict, self.fallback_model)
 
+        # Clear any stale inference state (e.g. residual errors from previous crashes)
+        self._update_thinking(force=True)
+
     @staticmethod
     def _validate_config(cfg: dict) -> None:
         """Validate required config sections/keys and basic types at startup.
