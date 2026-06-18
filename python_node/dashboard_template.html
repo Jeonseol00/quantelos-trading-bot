@@ -523,9 +523,9 @@
             </div>
             <div class="kpi-card">
                 <div class="kpi-info" style="width: 100%; min-width: 0;">
-                    <h4>Kaggle Swarm AI</h4>
-                    <a id="kpi-gpu-link" href="#" target="_blank" style="text-decoration: none; display: block; width: 100%;">
-                        <div id="kpi-gpu" class="kpi-value" style="font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: 'JetBrains Mono'; color: var(--accent-primary); transition: all 0.2s; border-bottom: 1px dashed rgba(245, 158, 11, 0.3); display: inline-block; max-width: 100%;" title="Checking...">Checking...</div>
+                    <h4>Active AI Engine</h4>
+                    <a id="kpi-gpu-link" href="https://openrouter.ai" target="_blank" style="text-decoration: none; display: block; width: 100%;">
+                        <div id="kpi-gpu" class="kpi-value" style="font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: 'JetBrains Mono'; color: var(--accent-primary); transition: all 0.2s; border-bottom: 1px dashed rgba(245, 158, 11, 0.3); display: inline-block; max-width: 100%;" title="Connecting...">Waiting for trigger...</div>
                     </a>
                 </div>
             </div>
@@ -1461,6 +1461,23 @@
         }
 
         function renderThinkingUI(state) {
+            // Update Active AI Engine KPI
+            const gpuEl = document.getElementById('kpi-gpu');
+            const gpuLinkEl = document.getElementById('kpi-gpu-link');
+            if (gpuEl) {
+                if (state.model) {
+                    gpuEl.innerText = state.model;
+                    gpuEl.title = "Connected Model: " + state.model;
+                    gpuEl.style.color = 'var(--accent-primary)';
+                } else {
+                    gpuEl.innerText = "Standby (Waiting for Trigger)";
+                    gpuEl.title = "Engine Idle";
+                    gpuEl.style.color = 'var(--text-muted)';
+                }
+                gpuLinkEl.href = "https://openrouter.ai";
+                gpuLinkEl.style.pointerEvents = 'auto';
+            }
+
             const wrapper = document.getElementById('thinking-content-wrapper');
             if (!wrapper) return;
 
@@ -1869,23 +1886,11 @@
                 document.getElementById('kpi-active').innerText = activeCount;
                 document.getElementById('active-positions-count').innerText = `${activeCount} Open`;
 
-                // Update GPU swarm URL with click-to-open and hover tooltip
+                // GPU URL is now updated via /api/ai_thinking
                 const gpuUrl = data.gpu_url || '';
-                const gpuEl = document.getElementById('kpi-gpu');
-                const gpuLinkEl = document.getElementById('kpi-gpu-link');
-                if (gpuUrl) {
-                    const cleanUrl = gpuUrl.replace('https://', '').replace('http://', '');
-                    gpuEl.innerText = cleanUrl;
-                    gpuEl.title = gpuUrl;
-                    gpuLinkEl.href = gpuUrl;
-                    gpuLinkEl.style.pointerEvents = 'auto';
-                    gpuEl.style.color = 'var(--accent-primary)';
-                } else {
-                    gpuEl.innerText = 'Not Configured';
-                    gpuEl.title = 'No GPU swarm URL configured';
-                    gpuLinkEl.href = '#';
-                    gpuLinkEl.style.pointerEvents = 'none';
-                    gpuEl.style.color = 'var(--text-muted)';
+                const gpuLinkElFallback = document.getElementById('kpi-gpu-link');
+                if (gpuUrl && gpuUrl.includes('openrouter')) {
+                    gpuLinkElFallback.href = "https://openrouter.ai";
                 }
 
                 // Update AI Cognitive state
@@ -2068,7 +2073,7 @@
 
                 nodesList.innerHTML += createNodeRow('python_logic', 'Python Orchestrator', data.node_status.python_logic.alive, data.node_status.python_logic.ram_mb, data.node_status.python_logic.cpu_pct);
                 nodesList.innerHTML += createNodeRow('cpp_executor', 'C++ Execution Engine', data.node_status.cpp_executor.alive, data.node_status.cpp_executor.ram_mb, data.node_status.cpp_executor.cpu_pct);
-                nodesList.innerHTML += createNodeRow('kaggle_brain', 'Kaggle Swarm AI', data.node_status.kaggle_brain.alive, data.node_status.kaggle_brain.ram_mb, data.node_status.kaggle_brain.cpu_pct);
+                nodesList.innerHTML += createNodeRow('kaggle_brain', 'OpenRouter API', data.node_status.kaggle_brain.alive, data.node_status.kaggle_brain.ram_mb, data.node_status.kaggle_brain.cpu_pct);
 
                 // Update Active Positions Table (using .toFixed(2) for Gold formatting)
                 const posTable = document.querySelector('#table-positions tbody');

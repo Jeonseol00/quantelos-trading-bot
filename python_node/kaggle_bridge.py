@@ -161,19 +161,22 @@ class KaggleBridge:
         if now - self._last_url_check < self._url_cache_ttl and self._kaggle_url:
             return self._kaggle_url
 
-        # Check local DB first
-        url = self.db.get_config("kaggle_ngrok_url")
+        sync_method = self.cfg.get("kaggle", {}).get("sync_method", "supabase")
         
-        # If local DB is empty or cache expired, sync URL
-        if not url or (now - self._last_url_check >= self._url_cache_ttl):
-            sync_method = self.cfg.get("kaggle", {}).get("sync_method", "supabase")
-            if sync_method == "supabase":
+        if sync_method == "manual":
+            url = self.cfg.get("kaggle", {}).get("supabase_url")
+            if url:
+                self.db.set_config("kaggle_ngrok_url", url)
+        else:
+            # Check local DB first
+            url = self.db.get_config("kaggle_ngrok_url")
+            
+            # If local DB is empty or cache expired, sync URL
+            if not url or (now - self._last_url_check >= self._url_cache_ttl):
                 logger.info("Syncing Kaggle URL from Supabase...")
-            else:
-                logger.debug("Kaggle URL sync method set to: %s. Using local DB value.", sync_method)
-            synced_url = self.sync_kaggle_url()
-            if synced_url:
-                url = synced_url
+                synced_url = self.sync_kaggle_url()
+                if synced_url:
+                    url = synced_url
 
         self._kaggle_url = url if url else None
         self._last_url_check = now
@@ -246,30 +249,34 @@ You MUST wrap your internal reasoning inside <think> and </think> tags. Provide 
             logger.warning("Kaggle URL is empty/not configured.")
             return ""
 
-        # 1. Detect if it is an Ollama backend
-        is_ollama = False
-        config_model = self.cfg.get("kaggle", {}).get("target_model", "deepseek-r1:32b")  # Gold v2.0: default to DeepSeek-R1
-        ollama_model = config_model
-        try:
-            tags_resp = requests.get(f"{url}/api/tags", timeout=3)
-            if tags_resp.status_code == 200:
-                is_ollama = True
-                tags_data = tags_resp.json()
-                models = [m["name"] for m in tags_data.get("models", [])]
-                if models:
-                    matched_model = next((m for m in models if config_model in m or m in config_model), None)
-                    if matched_model:
-                        ollama_model = matched_model
-                    elif "deepseek-r1:32b" in models:
-                        ollama_model = "deepseek-r1:32b"  # Gold v2.0: prefer DeepSeek-R1:32b
-                    elif "deepseek-r1:8b" in models:
-                        ollama_model = "deepseek-r1:8b"
-                    elif "qwen2.5-coder:14b" in models:
-                        ollama_model = "qwen2.5-coder:14b"  # Last resort fallback
-                    else:
-                        ollama_model = models[0]
-        except Exception:
-            pass
+        # 1. Detect API type
+        api_type = "flask"
+        config_model = self.cfg.get("kaggle", {}).get("target_model", "deepseek-r1:32b")
+        target_model = config_model
+        
+        if "openrouter" in url.lower() or "20128" in url or "v1" in url:
+            api_type = "openai"
+        else:
+            try:
+                tags_resp = requests.get(f"{url}/api/tags", timeout=3)
+                if tags_resp.status_code == 200:
+                    api_type = "ollama"
+                    tags_data = tags_resp.json()
+                    models = [m["name"] for m in tags_data.get("models", [])]
+                    if models:
+                        matched_model = next((m for m in models if config_model in m or m in config_model), None)
+                        if matched_model:
+                            target_model = matched_model
+                        elif "deepseek-r1:32b" in models:
+                            target_model = "deepseek-r1:32b"
+                        elif "deepseek-r1:8b" in models:
+                            target_model = "deepseek-r1:8b"
+                        elif "qwen2.5-coder:14b" in models:
+                            target_model = "qwen2.5-coder:14b"
+                        else:
+                            target_model = models[0]
+            except Exception:
+                pass
 
         # 2. Query appropriate endpoint with retries
         max_retries = 3
@@ -288,37 +295,67 @@ You MUST wrap your internal reasoning inside <think> and </think> tags. Provide 
                     if not url:
                         raise ValueError("Kaggle URL is empty/not configured.")
 
-                if is_ollama:
-                    logger.info("Connecting to Ollama GPU Swarm backend (%s) with streaming...", ollama_model)
-                    # Gold v2.0: Preserve previous thinking state for dashboard display
+                if api_type in ["ollama", "openai"]:
+                    logger.info("Connecting to %s GPU Swarm backend (%s) with streaming...", api_type.upper(), target_model)
                     self._preserve_last_thinking()
-                    self._update_thinking(active=True, phase="connecting", model=ollama_model,
+                    self._update_thinking(active=True, phase="connecting", model=target_model,
                                           pair=self._last_direction, direction=self._last_direction,
                                           started_at=time.time(), tokens_generated=0,
                                           thinking_text="", output_text="", error=None,
                                           current_agent=None, agents_completed=[])
-                    # Gold v2.0: num_ctx set to 16384 — prevents silent truncation
-                    # DeepSeek-R1:32b needs: ~2500 prompt + ~4000 thinking + ~5000 output = ~11500 tokens
-                    ollama_ctx = self.cfg.get("kaggle", {}).get("ollama_num_ctx", 16384)
-                    resp = requests.post(
-                        f"{url}/api/generate",
-                        json={
-                            "model": ollama_model,
-                            "prompt": prompt,
-                            "stream": True,
-                            "think": True,  # Gold v2.0: Force DeepSeek-R1 to emit <think> blocks
-                            "options": {
-                                "temperature": temperature,
-                                "num_predict": self.num_predict,
-                                "num_ctx": ollama_ctx  # Gold v2.0: explicit context window
-                            }
-                        },
-                        stream=True,
-                        timeout=self.timeout
-                    )
-                    resp.raise_for_status()
-                    logger.info("Ollama streaming started — model: %s | num_ctx: %d | num_predict: %d",
-                               ollama_model, ollama_ctx, self.num_predict)
+                    
+                    if api_type == "openai":
+                        api_key = self.cfg.get("kaggle", {}).get("router_api_key", "sk-xxx")
+                        headers = {
+                            "Content-Type": "application/json",
+                            "Authorization": f"Bearer {api_key}"
+                        }
+                        if "openrouter" in url.lower():
+                            headers["HTTP-Referer"] = "http://localhost:3000"
+                            headers["X-Title"] = "Quantelos"
+                            
+                        endpoint = url if "chat/completions" in url else f"{url}/v1/chat/completions"
+                        if "openrouter" in url.lower() and "api/" not in url:
+                            endpoint = f"{url}/api/v1/chat/completions"
+                        # Make sure local 9router works too
+                        if "20128" in url and "chat/completions" not in url:
+                            endpoint = "http://localhost:20128/v1/chat/completions"
+
+                        resp = requests.post(
+                            endpoint,
+                            json={
+                                "model": target_model,
+                                "messages": [{"role": "user", "content": prompt}],
+                                "stream": True,
+                                "temperature": temperature
+                            },
+                            headers=headers,
+                            stream=True,
+                            timeout=self.timeout
+                        )
+                        resp.raise_for_status()
+                        logger.info("OpenAI streaming started — model: %s | endpoint: %s", target_model, endpoint)
+                    else:
+                        ollama_ctx = self.cfg.get("kaggle", {}).get("ollama_num_ctx", 16384)
+                        resp = requests.post(
+                            f"{url}/api/generate",
+                            json={
+                                "model": target_model,
+                                "prompt": prompt,
+                                "stream": True,
+                                "think": True,
+                                "options": {
+                                    "temperature": temperature,
+                                    "num_predict": self.num_predict,
+                                    "num_ctx": ollama_ctx
+                                }
+                            },
+                            stream=True,
+                            timeout=self.timeout
+                        )
+                        resp.raise_for_status()
+                        logger.info("Ollama streaming started — model: %s | num_ctx: %d | num_predict: %d",
+                                    target_model, ollama_ctx, self.num_predict)
                     self._update_thinking(phase="thinking")
                     
                     full_response = []
@@ -336,23 +373,59 @@ You MUST wrap your internal reasoning inside <think> and </think> tags. Provide 
                             line_count += 1
                             decoded = line.decode('utf-8')
                             logger.debug("Streamed line %d: %s", line_count, decoded[:100])
-                            data = json.loads(decoded)
-                            chunk = data.get("response", "")
-                            full_response.append(chunk)
+                            # Handle OpenAI vs Ollama stream formats
+                            if api_type == "openai":
+                                if decoded.startswith("data: "):
+                                    payload = decoded[6:]
+                                    if payload.strip() == "[DONE]":
+                                        done_reason = "stop"
+                                        break
+                                    try:
+                                        data = json.loads(payload)
+                                        choices = data.get("choices", [])
+                                        if not choices:
+                                            continue
+                                        delta = choices[0].get("delta", {})
+                                        chunk = delta.get("content", "")
+                                        if not chunk:
+                                            chunk = delta.get("reasoning", "")
+                                            if chunk and not has_thinking_field:
+                                                has_thinking_field = True
+                                                logger.info("OpenAI 'reasoning' field detected")
+                                            thinking_chunk = chunk if has_thinking_field else ""
+                                            if has_thinking_field: chunk = ""
+                                        else:
+                                            thinking_chunk = ""
+                                            
+                                        finish_reason = choices[0].get("finish_reason")
+                                        if finish_reason:
+                                            if finish_reason == "length": done_reason = "length"
+                                            elif finish_reason == "stop": done_reason = "stop"
+                                    except json.JSONDecodeError:
+                                        continue
+                                else:
+                                    continue
+                            else:
+                                try:
+                                    data = json.loads(decoded)
+                                    chunk = data.get("response", "")
+                                    if data.get("done", False):
+                                        done_reason = data.get("done_reason", "stop")
+                                    thinking_chunk = data.get("thinking", "")
+                                except json.JSONDecodeError:
+                                    continue
+                                    
+                            if chunk:
+                                full_response.append(chunk)
 
                             # Gold v2.0: Log first non-empty chunk for debugging
                             if not first_chunk_logged and chunk:
                                 first_chunk_logged = True
                                 logger.info("First response chunk: %s", repr(chunk[:200]))
 
-                            # Gold v2.0: Track done_reason for truncation detection
-                            if data.get("done", False):
-                                done_reason = data.get("done_reason", "stop")
-
-                            # Gold v2.0: Ollama 'think: true' sends reasoning in separate field
-                            thinking_chunk = data.get("thinking", "")
+                            # Gold v2.0: Handling thinking fields
                             if thinking_chunk:
-                                if not has_thinking_field:
+                                if not has_thinking_field and api_type == "ollama":
                                     has_thinking_field = True
                                     logger.info("Ollama 'thinking' field detected — using separate field for reasoning")
                                 thinking_buffer += thinking_chunk
@@ -397,8 +470,10 @@ You MUST wrap your internal reasoning inside <think> and </think> tags. Provide 
                                 elapsed_seconds=round(time.time() - start_time, 1)
                             )
 
-                            if data.get("done", False):
+                            if done_reason and api_type == "ollama" and data.get("done", False):
                                 break
+                            elif done_reason and api_type == "openai" and done_reason in ["stop", "length"]:
+                                pass # Handled by finish_reason above
 
                     # Gold v2.0: Fallback — if output_buffer is empty, extract JSON from full_text
                     full_text = "".join(full_response)

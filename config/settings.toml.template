@@ -62,6 +62,7 @@ scalping_rsi_low = 40                # Pullback, not capitulation
 scalping_rsi_high = 60               # Pullback, not capitulation
 scalping_vwap_std = 1.5              # Tighter Keltner so setups appear
 scalping_trend_filter = true         # Enforce trend-following trading alignment
+allow_asia_scalping = true           # Enable Asia session trading for development
 cooldown_sec = 120                   # 2-minute cooldown between scalps
 news_block_pre_min = 10              # Block trading 10 minutes before high-impact news
 news_block_post_min = 15             # Block trading 15 minutes after high-impact news
@@ -73,7 +74,7 @@ scalping_min_sl_price = 5.0          # Minimum SL distance in price ($5.00 for G
 scalping_min_tp_price = 8.0          # Minimum TP distance in price ($8.00 for Gold)
 max_spread_pips = 8.0               # Max acceptable spread before blocking entry (Gold: $0.80)
 staleness_check_sec = 60             # Re-validate price if AI inference takes >60s
-allow_asia_scalping = false          # BLOCK Asia session for Gold (low liquidity = false signals)
+
 
 # ─── Market Time Windows (MRD-Locked, WIB / UTC+7) ───────────────────────────
 [market_windows]
@@ -86,17 +87,15 @@ london_session_end   = "17:00"
 golden_window_start  = "19:00"    # HIGH ALERT execution window
 golden_window_end    = "22:00"
 
-# ─── Kaggle AI Brain Configuration ───────────────────────────────────────────
+# ─── AI Router Configuration (replaces Kaggle) ───────────────────────────────
 [kaggle]
-sync_method     = "manual"       # "supabase" | "github_gist" | "manual"
-supabase_url    = "https://nlbfhwmiovneqppvzsra.supabase.co"
-supabase_key    = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5sYmZod21pb3ZuZXFwcHZ6c3JhIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MDc1MjU3MCwiZXhwIjoyMDk2MzI4NTcwfQ.aqTavm4LgEm85tV8onIexUA825bt8onR6P8ojirWPmc"
-gist_id         = ""
-poll_interval_s = 30               # How often ASUS checks for new Kaggle URL
-inference_timeout_s = 180          # Max wait for LLM (DeepSeek-R1:32b chain-of-thought needs time)
-target_model    = "deepseek-r1:32b"
-num_predict     = 4096             # Increased for DeepSeek-R1 thinking tokens + output
-ollama_num_ctx  = 16384            # Context window size (prompt+thinking+output must fit)
+sync_method     = "manual"       # "manual" to use the URL below directly
+supabase_url    = "https://openrouter.ai" # Or use 9Router: "http://localhost:20128"
+router_api_key  = "sk-or-YOUR-OPENROUTER-API-KEY"
+target_model    = "nousresearch/hermes-3-llama-3.1-405b:free"  # The monster 405B model
+inference_timeout_s = 180          # Max wait for LLM
+num_predict     = 4096             # Max response tokens
+ollama_num_ctx  = 16384            # Context window size
 fallback_model  = "none"           # DISABLED: No VADER fallback for live trading (safety)
 min_ai_confidence = 0.60           # DeepSeek-R1 confidence is well-calibrated; 0.60 threshold
 block_trade_on_ai_failure = true   # Hard-block trading when AI brain is unreachable
@@ -104,9 +103,9 @@ block_trade_on_ai_failure = true   # Hard-block trading when AI brain is unreach
 # ─── Notification Channels ───────────────────────────────────────────────────
 [notifications]
 enabled        = true
-discord_webhook = "https://discord.com/api/webhooks/1512837047247831050/fEST0sgzQsf6LxVUVmoDsqqeeyNf1ujuU7VmwC2wq92354zFjqo2jRbsNl0tr1aGcE5Z"
-telegram_bot_token = "8944090913:AAHFAmhmKku-mz9aLfunixemJnnWb_3NQPs"
-telegram_chat_id   = "6462607253"
+discord_webhook = "https://discord.com/api/webhooks/YOUR_WEBHOOK_URL"
+telegram_bot_token = "YOUR_TELEGRAM_BOT_TOKEN"
+telegram_chat_id   = "YOUR_CHAT_ID"
 alert_on_trade     = true
 alert_on_error     = true
 alert_on_heartbeat_fail = true
