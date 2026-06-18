@@ -131,7 +131,8 @@ class KaggleBridge:
         # stalled stream could otherwise block the orchestrator indefinitely.
         self.max_inference_seconds = self.cfg.get("kaggle", {}).get("inference_timeout_s", 180)
 
-        self.fallback_model = self.cfg.get("kaggle", {}).get("fallback_model", "none")  # Gold v2.0: read fallback config
+        self.fallback_model = self.cfg.get("kaggle", {}).get("fallback_model", "none")
+        self.num_predict = self.cfg.get("kaggle", {}).get("num_predict", 4096)
         logger.info("KaggleBridge initialized — num_predict: %d | fallback_model: %s", self.num_predict, self.fallback_model)
 
     @staticmethod
@@ -299,7 +300,7 @@ You MUST wrap your internal reasoning inside <think> and </think> tags. Provide 
         config_model = self.cfg.get("kaggle", {}).get("target_model", "deepseek-r1:32b")
         target_model = config_model
         
-        if "openrouter" in url.lower() or "20128" in url or "v1" in url:
+        if "openrouter" in url.lower() or "20128" in url or "/v1" in url:
             api_type = "openai"
         else:
             try:
@@ -414,6 +415,10 @@ You MUST wrap your internal reasoning inside <think> and </think> tags. Provide 
                     done_reason = None
                     has_thinking_field = False  # Gold v2.0: track if Ollama sends separate 'thinking' field
                     first_chunk_logged = False
+                    
+                    # Local state for _detect_agent_phase (thread-safe)
+                    pipeline_idx = 0
+                    completed = []
 
                     for line in resp.iter_lines():
                         # Absolute wall-clock guard: SSE keep-alive comments reset
@@ -516,7 +521,7 @@ You MUST wrap your internal reasoning inside <think> and </think> tags. Provide 
 
                             # Detect which agent is being analyzed from the streamed text
                             combined = thinking_buffer + output_buffer
-                            current_agent, completed = self._detect_agent_phase(combined)
+                            current_agent, completed, pipeline_idx = self._detect_agent_phase(combined, pipeline_idx, completed)
 
                             if broadcast_ui:
                                 self._update_thinking(
@@ -547,7 +552,7 @@ You MUST wrap your internal reasoning inside <think> and </think> tags. Provide 
                     full_text = "".join(full_response)
                     if not output_buffer and full_text.strip():
                         # Strip any remaining thinking content from full_text to get output
-                        cleaned = re.sub(r'</think>.*?</think>', '', full_text, flags=re.DOTALL)
+                        cleaned = re.sub(r'<think>.*?</think>', '', full_text, flags=re.DOTALL)
                         if cleaned.strip():
                             output_buffer = cleaned.strip()
                             logger.info("Output recovered from full_text via regex fallback (%d chars)", len(output_buffer))
@@ -901,7 +906,7 @@ You MUST wrap your internal reasoning inside <think> and </think> tags. Provide 
         with self._thinking_lock:
             return dict(self._thinking_state)
 
-    def _detect_agent_phase(self, text: str) -> tuple:
+    def _detect_agent_phase(self, text: str, pipeline_idx: int, completed: list) -> tuple:
         """Detect which agent the LLM is currently analyzing using sequential state machine.
         Once an agent is completed, it never goes back — prevents keyword pollution from
         cross-references in later reasoning phases (e.g., Risk Assessor mentioning 'retail FOMO')."""
@@ -915,15 +920,9 @@ You MUST wrap your internal reasoning inside <think> and </think> tags. Provide 
         ]
 
         text_lower = text.lower()
-
-        # Use persistent state to track pipeline progress across calls
-        # Note: State is reset explicitly at the start of query_llm(), not by text length heuristic
-        if not hasattr(self, '_agent_pipeline_idx'):
-            self._agent_pipeline_idx = 0  # Next agent to detect
-            self._agent_completed = []
+        idx = pipeline_idx
 
         # Sequential detection: only look for agents we haven't passed yet
-        idx = self._agent_pipeline_idx
         while idx < len(PIPELINE):
             agent_id, keywords = PIPELINE[idx]
             found = False
@@ -932,17 +931,16 @@ You MUST wrap your internal reasoning inside <think> and </think> tags. Provide 
                     found = True
                     break
             if found:
-                if agent_id not in self._agent_completed:
-                    self._agent_completed.append(agent_id)
+                if agent_id not in completed:
+                    completed.append(agent_id)
                 idx += 1  # Move to next agent
             else:
                 break  # Current agent not yet found — stop scanning
 
-        self._agent_pipeline_idx = idx
         # Current agent = the one being analyzed (last completed + 1, or last completed)
-        if self._agent_completed:
-            current = self._agent_completed[-1]
+        if completed:
+            current = completed[-1]
         else:
             current = None
 
-        return current, list(self._agent_completed)
+        return current, list(completed), idx
